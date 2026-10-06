@@ -62,7 +62,10 @@ public final class GoogleOAuth: AccessTokenProvider {
     let client: GoogleClientConfig
     let secrets: SecretStore
     let http: HTTPTransport
+    /// Parallel uploads ask for tokens concurrently: guard the cache and share one refresh.
+    private let lock = NSLock()
     private var cached: (token: String, expires: Date)?
+    private var refreshing: Task<String, Error>?
 
     public init(client: GoogleClientConfig, secrets: SecretStore, http: HTTPTransport = URLSessionTransport()) {
         self.client = client
@@ -114,7 +117,20 @@ public final class GoogleOAuth: AccessTokenProvider {
     }
 
     public func accessToken() async throws -> String {
-        if let cached, cached.expires > Date().addingTimeInterval(60) { return cached.token }
+        let task: Task<String, Error> = lock.withLock {
+            if let cached, cached.expires > Date().addingTimeInterval(60) {
+                return Task { cached.token }
+            }
+            if let refreshing { return refreshing }
+            let task = Task { try await self.refreshAccessToken() }
+            refreshing = task
+            return task
+        }
+        defer { lock.withLock { if refreshing == task { refreshing = nil } } }
+        return try await task.value
+    }
+
+    private func refreshAccessToken() async throws -> String {
         guard let refresh = secrets.get(Self.refreshTokenAccount).flatMap({ String(data: $0, encoding: .utf8) }) else {
             throw GoogleAuthError.notLoggedIn
         }
@@ -132,7 +148,7 @@ public final class GoogleOAuth: AccessTokenProvider {
     }
 
     public func invalidate() {
-        cached = nil
+        lock.withLock { cached = nil }
     }
 
     public func logout() async {
@@ -144,14 +160,14 @@ public final class GoogleOAuth: AccessTokenProvider {
             _ = try? await http.send(request)
         }
         secrets.delete(Self.refreshTokenAccount)
-        cached = nil
+        invalidate()
     }
 
     @discardableResult
     private func cache(_ response: [String: Any]) -> String {
         let token = response["access_token"] as? String ?? ""
         let lifetime = response["expires_in"] as? Double ?? 3600
-        cached = (token, Date().addingTimeInterval(lifetime))
+        lock.withLock { cached = (token, Date().addingTimeInterval(lifetime)) }
         return token
     }
 
