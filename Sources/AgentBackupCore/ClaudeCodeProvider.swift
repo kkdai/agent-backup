@@ -222,20 +222,7 @@ public struct ClaudeCodeProvider: AgentProvider {
         var conflicts: [RestoreNote] = []
 
         func mergeServers(_ servers: [String: Any], into current: [String: Any], scope: String) -> [String: Any] {
-            var merged = current
-            for (name, config) in servers {
-                guard let local = merged[name] else {
-                    merged[name] = config
-                    continue
-                }
-                if NSDictionary(dictionary: ["v": local]).isEqual(to: ["v": config]) { continue }
-                switch policy {
-                case .keep: conflicts.append(.mcpConflictKept(server: name, scope: scope == "user" ? nil : scope))
-                case .replace: merged[name] = config
-                case .rename: merged["\(name)-restored"] = config
-                }
-            }
-            return merged
+            mergeMCPServers(servers, into: current, scope: scope == "user" ? nil : scope, policy: policy, conflicts: &conflicts)
         }
 
         if let servers = incoming["mcpServers"] as? [String: Any] {
