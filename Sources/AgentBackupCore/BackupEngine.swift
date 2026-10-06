@@ -146,22 +146,18 @@ public struct BackupEngine {
         return plans
     }
 
-    /// Writes the plan. Every file it overwrites is first copied to
-    /// `~/Library/Application Support/AgentBackup/rollback/<timestamp>/`, and newly created
-    /// files are listed in `created-files.txt` there.
+    /// Writes the plan. Every file it overwrites is first copied into a rollback point
+    /// (see `RollbackPoint`), so the restore can be undone.
     public static func apply(_ plans: [RestorePlan], home: URL, now: Date = Date()) throws -> ApplyResult {
         let fm = FileManager.default
-        let rollbackDir = home.appendingPathComponent("Library/Application Support/AgentBackup/rollback")
-            .appendingPathComponent(snapshotID(date: now, hostname: "restore"))
-        var written = 0
-        var created: [String] = []
+        let writes = plans.flatMap(\.writes).filter(\.writes)
+        guard !writes.isEmpty else { return ApplyResult(written: 0, rollbackDir: nil) }
 
-        for write in plans.flatMap(\.writes) where write.writes {
+        let point = try RollbackPoint.create(home: home, date: now)
+        var created: [String] = []
+        for write in writes {
             if fm.fileExists(atPath: write.target.path) {
-                let relative = write.target.path.hasPrefix(home.path + "/")
-                    ? String(write.target.path.dropFirst(home.path.count + 1))
-                    : write.target.lastPathComponent
-                let saved = rollbackDir.appendingPathComponent(relative)
+                let saved = point.savedCopy(of: write.target, home: home)
                 try fm.createDirectory(at: saved.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try? fm.removeItem(at: saved)
                 try fm.copyItem(at: write.target, to: saved)
@@ -174,13 +170,9 @@ public struct BackupEngine {
                 // Keeps `claude --resume` ordering sessions by when they actually happened.
                 try? fm.setAttributes([.modificationDate: date], ofItemAtPath: write.target.path)
             }
-            written += 1
+            // Written after every file, so an interrupted restore can still be rolled back.
+            try point.recordCreated(created)
         }
-        guard written > 0 else { return ApplyResult(written: 0, rollbackDir: nil) }
-        // Files that didn't exist before; rolling back means deleting these.
-        try fm.createDirectory(at: rollbackDir, withIntermediateDirectories: true)
-        try Data((created.joined(separator: "\n") + "\n").utf8)
-            .write(to: rollbackDir.appendingPathComponent("created-files.txt"))
-        return ApplyResult(written: written, rollbackDir: rollbackDir)
+        return ApplyResult(written: writes.count, rollbackDir: point.url)
     }
 }

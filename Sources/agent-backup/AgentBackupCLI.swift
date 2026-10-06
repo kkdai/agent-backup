@@ -13,7 +13,7 @@ struct AgentBackupCLI: AsyncParsableCommand {
         Everything stored there is encrypted with a key protected by your passphrase.
         Set AGENT_BACKUP_PASSPHRASE to skip the prompt; AGENT_BACKUP_NO_KEYCHAIN=1 to not cache the unlocked key.
         """,
-        subcommands: [Detect.self, Backup.self, Snapshots.self, Restore.self, Lock.self, Drive.self]
+        subcommands: [Detect.self, Backup.self, Snapshots.self, Restore.self, Rollback.self, Lock.self, Drive.self]
     )
 }
 
@@ -203,11 +203,50 @@ struct Restore: AsyncParsableCommand {
         }
         let result = try BackupEngine.apply(plans, home: targetHome)
         print("\nWrote \(result.written) files.")
-        if let dir = result.rollbackDir { print("Rollback copies: \(dir.path)") }
+        if result.rollbackDir != nil { print("To undo this restore: agent-backup rollback --apply") }
     }
 
     func displayPath(_ url: URL, home: URL) -> String {
         url.path.hasPrefix(home.path + "/") ? "~" + url.path.dropFirst(home.path.count) : url.path
+    }
+}
+
+struct Rollback: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Undo a restore: put back the files it overwrote and delete the ones it created. Shows the plan unless --apply."
+    )
+    @Option(help: "Rollback point ID (default: the most recent restore). See --list.")
+    var id: String?
+    @Flag(help: "List rollback points.")
+    var list = false
+    @OptionGroup var home: HomeOption
+    @Flag(help: "Actually undo.")
+    var apply = false
+
+    func run() throws {
+        let points = RollbackPoint.list(home: home.url)
+        if list {
+            if points.isEmpty { print("No restores to undo.") }
+            for point in points {
+                let plan = point.plan(home: home.url)
+                print("\(point.id)  \(point.date.formatted())  \(plan.restore.count) to put back, \(plan.delete.count) to delete")
+            }
+            return
+        }
+        guard let point = id.map({ id in points.first { $0.id == id } }) ?? points.first else {
+            throw ValidationError(id == nil ? "No restores to undo." : "No rollback point '\(id!)'. See --list.")
+        }
+        let plan = point.plan(home: home.url)
+        print("Restore of \(point.date.formatted()):")
+        print("  put back \(plan.restore.count) files, delete \(plan.delete.count) files")
+        for url in plan.restore { print("    ↺ \(url.path)") }
+        for url in plan.delete { print("    ✕ \(url.path)") }
+        guard apply else {
+            print("\nDry run — nothing changed. Re-run with --apply to undo.")
+            return
+        }
+        let result = try point.undo(home: home.url)
+        print("\nUndone: put back \(result.restored), deleted \(result.deleted).")
     }
 }
 

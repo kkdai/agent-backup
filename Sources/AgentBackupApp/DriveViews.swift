@@ -148,6 +148,14 @@ struct SnapshotsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("備份紀錄").font(.largeTitle.weight(.semibold))
+            snapshots
+            RollbackSection()
+        }
+        .padding(24)
+    }
+
+    @ViewBuilder private var snapshots: some View {
+        VStack(alignment: .leading, spacing: 12) {
             if let status = model.driveStatus {
                 if status.snapshots.isEmpty {
                     Card { Text("Google Drive 上還沒有備份。到「總覽」按「立即備份」。").foregroundStyle(.secondary) }
@@ -173,7 +181,6 @@ struct SnapshotsView: View {
                 }
             }
         }
-        .padding(24)
     }
 
     private func row(_ snapshot: SnapshotRef, isLatest: Bool) -> some View {
@@ -190,6 +197,58 @@ struct SnapshotsView: View {
             Button("還原…") {}
                 .disabled(true)
                 .help("還原精靈即將推出（#9）")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+}
+
+/// Restores done on this Mac, each undoable.
+struct RollbackSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var confirming: RollbackPoint?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "最近的還原")
+            if let message = model.rollbackMessage {
+                Label(message, systemImage: "arrow.uturn.backward.circle").foregroundStyle(.secondary)
+            }
+            if model.rollbackPoints.isEmpty {
+                Card { Text("這台 Mac 還沒有還原過。每次還原都會保留復原點，可以一鍵退回還原前的狀態。").foregroundStyle(.secondary) }
+            } else {
+                Card(padding: 0) {
+                    VStack(spacing: 0) {
+                        ForEach(Array(model.rollbackPoints.enumerated()), id: \.element.id) { index, point in
+                            if index > 0 { Divider() }
+                            row(point, isLatest: index == 0)
+                        }
+                    }
+                }
+                Text("要依序從最新的開始復原；復原後該紀錄會移除。").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .confirmationDialog("復原這次還原？", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
+                            presenting: confirming) { point in
+            Button("復原", role: .destructive) { Task { await model.undo(point) } }
+        } message: { point in
+            let plan = point.plan(home: model.home)
+            Text("會放回 \(plan.restore.count) 個被覆蓋的檔案，並刪除 \(plan.delete.count) 個還原時新增的檔案。請先關閉 Claude Code。")
+        }
+    }
+
+    private func row(_ point: RollbackPoint, isLatest: Bool) -> some View {
+        let plan = point.plan(home: model.home)
+        return HStack(spacing: 12) {
+            Image(systemName: "arrow.down.doc").foregroundStyle(.secondary).frame(width: 24)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("還原於 \(Format.dateTime(point.date))").fontWeight(.medium)
+                Text("覆蓋 \(plan.restore.count) 個檔案 · 新增 \(plan.delete.count) 個檔案").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("復原…") { confirming = point }
+                .disabled(!isLatest)
+                .help(isLatest ? "退回這次還原之前的狀態" : "請先復原較新的還原")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

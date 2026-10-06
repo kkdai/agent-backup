@@ -70,6 +70,8 @@ final class AppModel {
     var backupState: BackupState = .idle
     var passphrasePrompt: PassphrasePrompt?
     var isLoggingIn = false
+    var rollbackPoints: [RollbackPoint] = []
+    var rollbackMessage: String?
 
     private var auth: GoogleOAuth?
     private var store: GoogleDriveStore?
@@ -106,6 +108,7 @@ final class AppModel {
     // MARK: - Refresh
 
     func refresh() async {
+        rollbackPoints = RollbackPoint.list(home: home)
         async let scan: Void = scanAgents()
         async let drive: Void = refreshDrive()
         _ = await (scan, drive)
@@ -143,6 +146,20 @@ final class AppModel {
         } catch {
             drive = .failed(error.localizedDescription)
         }
+    }
+
+    // MARK: - Rollback
+
+    func undo(_ point: RollbackPoint) async {
+        let home = home
+        do {
+            let result = try await Task.detached { try point.undo(home: home) }.value
+            rollbackMessage = "已復原：放回 \(result.restored) 個檔案，刪除 \(result.deleted) 個還原時新增的檔案。"
+        } catch {
+            rollbackMessage = "復原失敗：\(error.localizedDescription)"
+        }
+        rollbackPoints = RollbackPoint.list(home: home)
+        await scanAgents()
     }
 
     // MARK: - Google Drive
