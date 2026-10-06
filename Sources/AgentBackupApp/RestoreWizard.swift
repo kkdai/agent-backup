@@ -586,6 +586,7 @@ private struct NoteRow: View {
         case .logInAfterRestore: "person.badge.key"
         case .quitBeforeApplying: "xmark.octagon"
         case .unsupportedAgent: "questionmark.circle"
+        case .sessionsMayNotBeListed: "exclamationmark.bubble"
         }
     }
 
@@ -597,6 +598,7 @@ private struct NoteRow: View {
         case .quitBeforeApplying(let agent): "還原前請先關閉 \(agent)"
         case .logInAfterRestore(let agent, _): "開啟 \(agent) 並重新登入（登入資訊不會備份）"
         case .unsupportedAgent(let id): "這個版本還不能還原「\(id)」，已略過"
+        case .sessionsMayNotBeListed(let agent): "\(agent) 的聊天記錄檔已還原，但它的「繼續對話」清單可能不會列出"
         }
     }
 }

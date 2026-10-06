@@ -15,7 +15,7 @@ public protocol AgentProvider {
 
 public enum Providers {
     public static func all(home: URL) -> [AgentProvider] {
-        [ClaudeCodeProvider(home: home), CodexProvider(home: home), GeminiProvider(home: home)]
+        [ClaudeCodeProvider(home: home), CodexProvider(home: home), GeminiProvider(home: home), CopilotProvider(home: home)]
     }
 
     public static func provider(id: String, home: URL) -> AgentProvider? {
@@ -142,6 +142,8 @@ public enum RestoreNote: Hashable {
     /// Login state is never backed up.
     case logInAfterRestore(agent: String, command: String)
     case unsupportedAgent(id: String)
+    /// Session files were restored, but the agent may not list them (its index isn't rebuilt).
+    case sessionsMayNotBeListed(agent: String)
 
     /// A command the user can copy, if the note has one.
     public var command: String? {
@@ -161,6 +163,7 @@ public enum RestoreNote: Hashable {
         case .quitBeforeApplying(let agent): "Quit \(agent) before applying: it rewrites its config while running."
         case .logInAfterRestore(let agent, let command): "After restoring, run `\(command)` and log in to \(agent) — login state is never backed up."
         case .unsupportedAgent(let id): "This version of the app can't restore '\(id)'; skipped."
+        case .sessionsMayNotBeListed(let agent): "\(agent) session files were restored, but it may not list them when resuming."
         }
     }
 }
