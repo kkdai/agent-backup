@@ -6,6 +6,7 @@ struct DriveView: View {
     @Environment(AppModel.self) private var model
     @State private var setupError: String?
     @State private var changingPassphrase = false
+    @State private var pruning = false
     @State private var passphraseChanged = false
 
     var body: some View {
@@ -139,6 +140,8 @@ struct DriveView: View {
                 Button("重新整理") { Task { await model.refreshDrive() } }
                 if status.initialized {
                     Button("更換 passphrase…") { changingPassphrase = true }
+                    Button("清理舊備份…") { pruning = true }
+                        .disabled(status.snapshots.count < 2)
                 }
                 if passphraseChanged {
                     Label("已更換 passphrase", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
@@ -148,6 +151,9 @@ struct DriveView: View {
             }
             .sheet(isPresented: $changingPassphrase) {
                 ChangePassphraseSheet { passphraseChanged = true }.environment(model)
+            }
+            .sheet(isPresented: $pruning) {
+                PruneSheet().environment(model)
             }
         }
     }
@@ -266,6 +272,73 @@ struct RollbackSection: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+}
+
+struct PruneSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var engine: BackupEngine?
+    @State private var plan: PrunePlan?
+    @State private var error: String?
+    @State private var working = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("清理舊備份", systemImage: "trash").font(.title2.weight(.semibold))
+            let policy = RetentionPolicy.standard
+            Text("每台 Mac 各自保留：最近 \(policy.keepLast) 份，以及最近 \(policy.keepDaily) 天、\(policy.keepWeekly) 週、\(policy.keepMonthly) 個月各一份。之後刪除沒有任何備份用到的資料。")
+                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if let plan {
+                Card {
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+                        GridRow { Text("保留").foregroundStyle(.secondary); Text("\(plan.keptSnapshots.count) 份備份") }
+                        GridRow { Text("刪除").foregroundStyle(.secondary); Text("\(plan.deletedSnapshots.count) 份備份") }
+                        GridRow { Text("釋放空間").foregroundStyle(.secondary); Text("\(Format.bytes(plan.freedBytes))（\(plan.deletedBlobs.count) 個檔案）") }
+                    }
+                }
+                if plan.youngUnreferencedBlobs > 0 {
+                    Text("另有 \(plan.youngUnreferencedBlobs) 個 24 小時內上傳、尚未被使用的檔案先保留（可能有其他 Mac 正在備份）。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            } else if error == nil {
+                HStack { ProgressView().controlSize(.small); Text("計算中…").foregroundStyle(.secondary) }
+            }
+            if let error { Text(error).font(.callout).foregroundStyle(.red) }
+            HStack {
+                Spacer()
+                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(role: .destructive) {
+                    guard let engine, let plan else { return }
+                    working = true
+                    Task {
+                        do {
+                            try await engine.prune(plan)
+                            await model.refreshDrive()
+                            dismiss()
+                        } catch {
+                            self.error = error.localizedDescription
+                        }
+                        working = false
+                    }
+                } label: {
+                    if working { ProgressView().controlSize(.small) } else { Text("刪除") }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(plan == nil || working || (plan?.deletedSnapshots.isEmpty ?? true) && (plan?.deletedBlobs.isEmpty ?? true))
+            }
+        }
+        .padding(24)
+        .frame(width: 460)
+        .task {
+            do {
+                (engine, plan) = try await model.planPrune()
+            } catch is CancellationError {
+                dismiss()
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
     }
 }
 

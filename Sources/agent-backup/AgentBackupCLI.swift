@@ -14,7 +14,7 @@ struct AgentBackupCLI: AsyncParsableCommand {
         Set AGENT_BACKUP_PASSPHRASE to skip the prompt (AGENT_BACKUP_NEW_PASSPHRASE for `passphrase change`);
         AGENT_BACKUP_NO_KEYCHAIN=1 to not cache the unlocked key.
         """,
-        subcommands: [Detect.self, Backup.self, Snapshots.self, Restore.self, Rollback.self, Passphrase.self, Lock.self, Drive.self]
+        subcommands: [Detect.self, Backup.self, Snapshots.self, Restore.self, Rollback.self, Prune.self, Passphrase.self, Lock.self, Drive.self]
     )
 }
 
@@ -268,6 +268,37 @@ struct Rollback: ParsableCommand {
         try ensureAgentsStopped(["claude-code"], home: home.url, force: force)
         let result = try point.undo(home: home.url)
         print("\nUndone: put back \(result.restored), deleted \(result.deleted).")
+    }
+}
+
+struct Prune: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Delete old snapshots by a retention policy, then blobs no snapshot uses. Shows the plan unless --apply.",
+        discussion: "The policy applies to each Mac's snapshots separately. Unused blobs younger than 24 hours are kept, in case another Mac is mid-backup."
+    )
+    @Option(name: .customLong("from"), help: "Backup location: `gdrive` or a folder.")
+    var location: String
+    @Option(help: "Keep the N newest snapshots.") var keepLast = RetentionPolicy.standard.keepLast
+    @Option(help: "Keep the newest snapshot of each of the last N days.") var keepDaily = RetentionPolicy.standard.keepDaily
+    @Option(help: "…of each of the last N weeks.") var keepWeekly = RetentionPolicy.standard.keepWeekly
+    @Option(help: "…of each of the last N months.") var keepMonthly = RetentionPolicy.standard.keepMonthly
+    @Flag(help: "Actually delete.") var apply = false
+
+    func run() async throws {
+        let store = try openStore(location)
+        let engine = BackupEngine(store: store, vault: try await openVault(store, createIfMissing: false))
+        let policy = RetentionPolicy(keepLast: keepLast, keepDaily: keepDaily, keepWeekly: keepWeekly, keepMonthly: keepMonthly)
+        let plan = try await engine.planPrune(policy: policy)
+        print("Keep \(plan.keptSnapshots.count) snapshots, delete \(plan.deletedSnapshots.count).")
+        for id in plan.deletedSnapshots { print("  ✕ \(id)") }
+        print("Delete \(plan.deletedBlobs.count) unused blobs (\(formatBytes(plan.freedBytes)))."
+              + (plan.youngUnreferencedBlobs > 0 ? " \(plan.youngUnreferencedBlobs) newer unused blobs kept for now." : ""))
+        guard apply else {
+            print("\nDry run — nothing deleted. Re-run with --apply.")
+            return
+        }
+        try await engine.prune(plan)
+        print("\nDone.")
     }
 }
 

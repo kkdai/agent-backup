@@ -29,8 +29,14 @@ public final class GoogleDriveStore: BackupStore {
     let sleep: (Double) async -> Void
 
     private var folderIDs: (root: String, blobs: String, snapshots: String)?
-    private var blobFiles: [String: String]?
-    private var snapshotFiles: [String: String]?
+    struct DriveFile {
+        var id: String
+        var created: Date
+        var size: Int
+    }
+
+    private var blobFiles: [String: DriveFile]?
+    private var snapshotFiles: [String: DriveFile]?
 
     public init(
         tokens: AccessTokenProvider, http: HTTPTransport = URLSessionTransport(), rootName: String = "AgentBackup",
@@ -78,14 +84,24 @@ public final class GoogleDriveStore: BackupStore {
         Set(try await blobIndex().keys)
     }
 
+    public func blobInfo() async throws -> [BlobInfo] {
+        try await blobIndex().map { BlobInfo(id: $0.key, created: $0.value.created, size: $0.value.size) }
+    }
+
     public func putBlob(_ id: String, _ data: Data) async throws {
         let fileID = try await upload(name: id, parent: try await folders().blobs, data: data)
-        blobFiles?[id] = fileID
+        blobFiles?[id] = DriveFile(id: fileID, created: Date(), size: data.count)
     }
 
     public func blob(_ id: String) async throws -> Data {
-        guard let fileID = try await blobIndex()[id] else { throw DriveError.badResponse("blob \(id) is missing") }
-        return try await download(fileID)
+        guard let file = try await blobIndex()[id] else { throw DriveError.badResponse("blob \(id) is missing") }
+        return try await download(file.id)
+    }
+
+    public func deleteBlob(_ id: String) async throws {
+        guard let file = try await blobIndex()[id] else { return }
+        try await delete(file.id)
+        blobFiles?[id] = nil
     }
 
     public func snapshotIDs() async throws -> [String] {
@@ -94,12 +110,18 @@ public final class GoogleDriveStore: BackupStore {
 
     public func putSnapshot(_ id: String, _ data: Data) async throws {
         let fileID = try await upload(name: id, parent: try await folders().snapshots, data: data)
-        snapshotFiles?[id] = fileID
+        snapshotFiles?[id] = DriveFile(id: fileID, created: Date(), size: data.count)
     }
 
     public func snapshot(_ id: String) async throws -> Data {
-        guard let fileID = try await snapshotIndex()[id] else { throw BackupError.snapshotNotFound(id) }
-        return try await download(fileID)
+        guard let file = try await snapshotIndex()[id] else { throw BackupError.snapshotNotFound(id) }
+        return try await download(file.id)
+    }
+
+    public func deleteSnapshot(_ id: String) async throws {
+        guard let file = try await snapshotIndex()[id] else { throw BackupError.snapshotNotFound(id) }
+        try await delete(file.id)
+        snapshotFiles?[id] = nil
     }
 
     public struct Account {
@@ -133,14 +155,14 @@ public final class GoogleDriveStore: BackupStore {
         return ids
     }
 
-    private func blobIndex() async throws -> [String: String] {
+    private func blobIndex() async throws -> [String: DriveFile] {
         if let blobFiles { return blobFiles }
         let index = try await list(parent: try await folders().blobs)
         blobFiles = index
         return index
     }
 
-    private func snapshotIndex() async throws -> [String: String] {
+    private func snapshotIndex() async throws -> [String: DriveFile] {
         if let snapshotFiles { return snapshotFiles }
         let index = try await list(parent: try await folders().snapshots)
         snapshotFiles = index
@@ -173,20 +195,22 @@ public final class GoogleDriveStore: BackupStore {
         return ((json["files"] as? [[String: Any]])?.first)?["id"] as? String
     }
 
-    /// name → file ID for every file directly in `parent`.
-    private func list(parent: String) async throws -> [String: String] {
-        var out: [String: String] = [:]
+    /// name → file for every file directly in `parent`.
+    private func list(parent: String) async throws -> [String: DriveFile] {
+        var out: [String: DriveFile] = [:]
         var pageToken: String?
         repeat {
             var components = URLComponents(string: Self.api)!
             components.queryItems = [
                 .init(name: "q", value: "\(Self.quoted(parent)) in parents and trashed = false"),
-                .init(name: "fields", value: "nextPageToken,files(id,name)"),
+                .init(name: "fields", value: "nextPageToken,files(id,name,createdTime,size)"),
                 .init(name: "pageSize", value: "1000"), .init(name: "spaces", value: "drive"),
             ] + (pageToken.map { [.init(name: "pageToken", value: $0)] } ?? [])
             let json = try await send(URLRequest(url: components.url!))
             for file in json["files"] as? [[String: Any]] ?? [] {
-                if let name = file["name"] as? String, let id = file["id"] as? String { out[name] = id }
+                guard let name = file["name"] as? String, let id = file["id"] as? String else { continue }
+                let created = (file["createdTime"] as? String).flatMap(Self.parseDate) ?? .distantPast
+                out[name] = DriveFile(id: id, created: created, size: (file["size"] as? String).flatMap { Int($0) } ?? 0)
             }
             pageToken = json["nextPageToken"] as? String
         } while pageToken != nil
@@ -224,6 +248,18 @@ public final class GoogleDriveStore: BackupStore {
         put.setValue(mimeType, forHTTPHeaderField: "Content-Type")
         put.httpBody = data
         return try fileID(from: try await send(put))
+    }
+
+    static func parseDate(_ string: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: string) ?? ISO8601DateFormatter().date(from: string)
+    }
+
+    private func delete(_ fileID: String) async throws {
+        var request = URLRequest(url: URL(string: "\(Self.api)/\(fileID)")!)
+        request.httpMethod = "DELETE"
+        _ = try await sendRaw(request)
     }
 
     private func download(_ fileID: String) async throws -> Data {

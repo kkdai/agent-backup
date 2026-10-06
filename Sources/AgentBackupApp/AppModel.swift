@@ -234,6 +234,12 @@ final class AppModel {
         vaultRequest = nil
     }
 
+    func planPrune(policy: RetentionPolicy = .standard) async throws -> (BackupEngine, PrunePlan) {
+        let (store, vault) = try await requestVault(allowCreate: false)
+        let engine = BackupEngine(store: store, vault: vault)
+        return (engine, try await engine.planPrune(policy: policy))
+    }
+
     func changePassphrase(current: String, new: String) async throws {
         guard let store else { throw GoogleAuthError.notLoggedIn }
         _ = try await keys.changePassphrase(in: store, current: current, new: new)
