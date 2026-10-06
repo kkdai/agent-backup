@@ -230,7 +230,13 @@ struct RollbackSection: View {
         }
         .confirmationDialog("復原這次還原？", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
                             presenting: confirming) { point in
-            Button("復原", role: .destructive) { Task { await model.undo(point) } }
+            Button("復原", role: .destructive) {
+                if RunningAgents.isRunning("claude-code") {
+                    model.rollbackMessage = "Claude Code 正在執行，請先關閉所有 Claude Code 視窗再復原。"
+                } else {
+                    Task { await model.undo(point) }
+                }
+            }
         } message: { point in
             let plan = point.plan(home: model.home)
             Text("會放回 \(plan.restore.count) 個被覆蓋的檔案，並刪除 \(plan.delete.count) 個還原時新增的檔案。請先關閉 Claude Code。")
