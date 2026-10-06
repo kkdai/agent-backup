@@ -15,7 +15,7 @@ public protocol AgentProvider {
 
 public enum Providers {
     public static func all(home: URL) -> [AgentProvider] {
-        [ClaudeCodeProvider(home: home), CodexProvider(home: home)]
+        [ClaudeCodeProvider(home: home), CodexProvider(home: home), GeminiProvider(home: home)]
     }
 
     public static func provider(id: String, home: URL) -> AgentProvider? {

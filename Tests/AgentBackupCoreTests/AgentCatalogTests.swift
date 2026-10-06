@@ -26,11 +26,12 @@ struct AgentCatalogTests {
         #expect(claude.mcpServers.map(\.target) == ["npx fs-mcp"])
 
         let gemini = try #require(agents.first { $0.id == "gemini-cli" })
-        #expect(gemini.support == .planned(issue: 13) && gemini.backupBytes == nil)
+        #expect(gemini.support == .supported && gemini.backupBytes != nil)
         #expect(gemini.mcpServers.first?.transport == .http)
         #expect(gemini.mcpServers.first?.target == "https://example.com/mcp")
 
         #expect(agents.first { $0.id == "codex" }?.installed == false)
+        #expect(agents.first { $0.id == "copilot-cli" }?.support == .planned(issue: 14))
     }
 
     @Test func readsCodexMCPServerNames() throws {

@@ -93,3 +93,37 @@ func planJSONLMerge(incoming: Data, target: URL, timestampKey: String, kind: Ite
     return PlannedWrite(target: target, data: data, kind: kind, action: action,
                         detail: "merged with this Mac's history", modifiedAt: nil)
 }
+
+/// Server-by-server MCP merge shared by every agent whose config is JSON `{"name": {...}}`.
+func mergeMCPServers(
+    _ incoming: [String: Any], into current: [String: Any], scope: String?,
+    policy: ConflictPolicy, conflicts: inout [RestoreNote]
+) -> [String: Any] {
+    var merged = current
+    for (name, config) in incoming {
+        guard let local = merged[name] else {
+            merged[name] = config
+            continue
+        }
+        if jsonEqual(local, config) { continue }
+        switch policy {
+        case .keep: conflicts.append(.mcpConflictKept(server: name, scope: scope))
+        case .replace: merged[name] = config
+        case .rename: merged["\(name)-restored"] = config
+        }
+    }
+    return merged
+}
+
+func jsonEqual(_ a: Any, _ b: Any) -> Bool {
+    NSDictionary(dictionary: ["v": a]).isEqual(to: ["v": b])
+}
+
+/// Plans a JSON file whose new content is computed from the local one (nil if missing).
+func planJSONMerge(target: URL, kind: ItemKind, detail: String, merge: ([String: Any]?) throws -> Any) throws -> PlannedWrite {
+    let local = readJSONObject(target)
+    let merged = try merge(local)
+    let data = try serializeJSON(merged)
+    let action: PlannedWrite.Action = local == nil ? .create : jsonEqual(local!, merged) ? .unchanged : .update
+    return PlannedWrite(target: target, data: data, kind: kind, action: action, detail: detail, modifiedAt: nil)
+}

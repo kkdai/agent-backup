@@ -46,7 +46,7 @@ public enum AgentCatalog {
                    paths: [".claude", ".claude.json"], apps: [], mcp: { _ in [] }),
         Definition(id: "codex", name: "Codex CLI", support: .supported,
                    paths: [".codex"], apps: [], mcp: { codexMCP($0.appendingPathComponent(".codex/config.toml")) }),
-        Definition(id: "gemini-cli", name: "Gemini CLI", support: .planned(issue: 13),
+        Definition(id: "gemini-cli", name: "Gemini CLI", support: .supported,
                    paths: [".gemini"], apps: [], mcp: { jsonMCP($0.appendingPathComponent(".gemini/settings.json")) }),
         Definition(id: "copilot-cli", name: "GitHub Copilot CLI", support: .planned(issue: 14),
                    paths: [".copilot"], apps: [], mcp: { jsonMCP($0.appendingPathComponent(".copilot/mcp-config.json")) }),
