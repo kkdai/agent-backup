@@ -19,7 +19,11 @@ final class FakeDrive: HTTPTransport {
     var injectedFailures: [Int] = []
     var expectedToken = "token-1"
     private var nextID = 0
-    private var sessions: [String: (name: String, parent: String)] = [:]
+    private var sessions: [String: (name: String, parent: String, total: Int, received: Data)] = [:]
+    /// Chunk PUTs that store only the first half of their bytes and then fail with 503.
+    var failChunks = 0
+    /// Expire the next resumable session after its first chunk (404).
+    var expireNextSession = false
 
     private let lock = NSLock()
     /// Highest number of requests in flight at once, to check uploads run in parallel.
@@ -56,11 +60,11 @@ final class FakeDrive: HTTPTransport {
         case ("POST", "/upload/drive/v3/files") where query["uploadType"] == "resumable":
             let meta = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as! [String: Any]
             let session = "s\(sessions.count)"
-            sessions[session] = (meta["name"] as! String, (meta["parents"] as! [String])[0])
+            let total = Int(request.value(forHTTPHeaderField: "X-Upload-Content-Length") ?? "0") ?? 0
+            sessions[session] = (meta["name"] as! String, (meta["parents"] as! [String])[0], total, Data())
             return respond(200, json: [:], headers: ["Location": "https://www.googleapis.com/upload/session/\(session)"])
         case ("PUT", let path) where path.hasPrefix("/upload/session/"):
-            let session = sessions[url.lastPathComponent]!
-            return respond(200, json: ["id": create(["name": session.name, "parents": [session.parent]], data: request.httpBody ?? Data())])
+            return uploadChunk(session: url.lastPathComponent, request: request)
         case ("PATCH", let path) where path.hasPrefix("/upload/drive/v3/files/") && query["uploadType"] == "media":
             guard files[url.lastPathComponent] != nil else { return respond(404, json: [:]) }
             files[url.lastPathComponent]!.data = request.httpBody ?? Data()
@@ -74,6 +78,36 @@ final class FakeDrive: HTTPTransport {
         default:
             return respond(400, json: ["error": "unsupported \(method) \(url.path)"])
         }
+    }
+
+    private func uploadChunk(session id: String, request: URLRequest) -> (Data, HTTPURLResponse) {
+        guard var session = sessions[id] else { return respond(404, json: ["error": "no such session"]) }
+        let range = request.value(forHTTPHeaderField: "Content-Range") ?? ""
+        let body = request.httpBody ?? Data()
+        if !range.hasPrefix("bytes */") {
+            // "bytes a-b/total": only accept a chunk that starts where we are.
+            let start = Int(range.dropFirst("bytes ".count).split(separator: "-")[0]) ?? -1
+            guard start == session.received.count else { return respond(400, json: ["error": "bad offset"]) }
+            if failChunks > 0 {
+                failChunks -= 1
+                session.received += body.prefix(body.count / 2)
+                sessions[id] = session
+                return respond(503, json: ["error": "backend error"])
+            }
+            session.received += body
+            sessions[id] = session
+            if expireNextSession {
+                expireNextSession = false
+                sessions[id] = nil
+                return respond(404, json: ["error": "session expired"])
+            }
+        }
+        if session.received.count >= session.total {
+            sessions[id] = nil
+            return respond(200, json: ["id": create(["name": session.name, "parents": [session.parent]], data: session.received)])
+        }
+        let headers = session.received.isEmpty ? [:] : ["Range": "bytes=0-\(session.received.count - 1)"]
+        return respond(308, json: [:], headers: headers)
     }
 
     func names(in parentName: String) -> [String] {
