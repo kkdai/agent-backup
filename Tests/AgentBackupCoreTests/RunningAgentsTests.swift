@@ -13,10 +13,14 @@ struct RunningAgentsTests {
             P(pid: 13, executable: "/Applications/Claude.app/Contents/MacOS/Claude", arguments: ["Claude"]),
             P(pid: 14, executable: "/usr/bin/vim", arguments: ["vim", "claude-notes.md"]),
             P(pid: 15, executable: "/Users/a/.local/share/claude/versions/2.1.289", arguments: ["claude", "--resume"]),
+            P(pid: 16, executable: "/usr/local/bin/node", arguments: ["node", "/x/node_modules/@github/copilot-language-server/dist/main.js"]),
+            P(pid: 17, executable: "/usr/local/bin/node", arguments: ["node", "/x/node_modules/@github/copilot/index.js"]),
         ])
         #expect(found["claude-code"] == [10, 11, 15])
         #expect(found["codex"] == [12])
+        #expect(found["claude-desktop"] == [13])   // the app, not the CLI
         #expect(found["gemini-cli"] == nil)
+        #expect(found["copilot-cli"] == [17])   // the language server is not the CLI
     }
 
     @Test func readsRealProcessTable() {
