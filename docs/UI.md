@@ -75,10 +75,11 @@
 | 已連線 | 帳號（名稱 / email）、備份份數、加密是否已設定、Google 儲存空間用量條、重新整理、登出 |
 | 失敗 | 錯誤訊息 + 重試 |
 
-### 3.4 備份紀錄 ✅（還原按鈕待 #9）
+### 3.4 備份紀錄 ✅
 
 - 依時間排列的快照：日期時間、裝置、相對時間、「最新」徽章
-- 每列「還原…」按鈕（目前停用，提示 #9）
+- 每列「還原…」→ 還原精靈（§3.6）
+- 「最近的還原」：這台 Mac 的復原點，可一鍵復原最新一次（#11）；Claude Code 執行中時不允許
 
 ### 3.5 Passphrase 對話框 ✅
 
@@ -86,9 +87,9 @@
 - **解鎖**（這台 Mac 還沒解鎖過）：輸入一次，錯誤時在對話框內顯示「Wrong passphrase」，成功後存 Keychain
 - PBKDF2 在背景執行，不卡 UI
 
-## 4. 待做畫面
+### 3.6 還原精靈 ✅（#9）
 
-### 4.1 還原精靈（#9）
+需要 passphrase（這台 Mac 沒解鎖過時會先跳出解鎖對話框）。
 
 ```
 ① 選快照          ② 路徑對應              ③ 預覽                    ④ 完成
@@ -100,10 +101,16 @@
                                                                   └─────────────┘
 ```
 
-- ② 自動偵測「備份裡的專案路徑在這台 Mac 不存在」，建議對應（同名資料夾搜尋）
-- ③ 衝突逐項選擇；MCP server 顯示欄位差異（不顯示值）
-- 執行前偵測 Claude Code 是否在執行（#10）
-- ④ 顯示回滾資料夾，提供「復原這次還原」（#11）
+- ① 列出 Drive 上的快照；右側顯示解密後的內容（來源、家目錄、各類別數量與大小）
+- ② 預設「舊家目錄 → 新家目錄」；找不到的專案會在 `~/Documents`、`~/Code`、`~/Projects`、`~/Developer` 等處（兩層內）搜尋同名資料夾並自動選用；也可「保留原路徑」或「選擇資料夾…」
+- ③ 衝突處理三選一（保留這台 Mac 的 / 用備份覆蓋 / 兩份都留），切換時重新計算；新增 / 更新 / 衝突 / 不變的數量與檔案清單；注意事項（重新安裝 plugin 指令、重新登入）
+- 開始還原前偵測正在執行的 agent（#10），只有還原到目前使用者的家目錄時才擋
+- ④ 寫入數量、接下來要做的事（可複製的指令）、提醒可在「最近的還原」退回
+
+> 衝突目前是整體一個選項；逐項選擇留待之後。
+
+## 4. 待做畫面
+
 
 ### 4.2 Menu bar（#20）
 
@@ -133,7 +140,8 @@ Sources/AgentBackupApp/
   AppModel.swift         @Observable 狀態：agents、Drive 狀態、備份進度、passphrase 流程
   OverviewView.swift     總覽、AgentCard、BackupPanel
   AgentDetailView.swift  Agent 詳細頁
-  DriveViews.swift       Google Drive、備份紀錄、Passphrase 對話框
+  DriveViews.swift       Google Drive、備份紀錄、最近的還原、Passphrase 對話框
+  RestoreWizard.swift    還原精靈（RestoreWizardModel + 四個步驟）
   Components.swift       Card、StatCard、Badge、AgentIcon、格式化、agent 顏色與圖示
 ```
 
@@ -152,6 +160,9 @@ swift run AgentBackupApp             # 開發時直接跑（無 .app bundle）
 
 # 不開視窗，把每個畫面（淺色 / 深色）輸出成 PNG，方便 review 或給 AI 看
 .build/debug/AgentBackupApp --render /tmp/agent-backup-screens
+
+# 用本機備份資料夾走一遍還原精靈（會真的還原到 <目標 home>，請用測試資料夾）
+AGENT_BACKUP_PASSPHRASE=… .build/debug/AgentBackupApp --render-wizard <備份資料夾> <目標 home> /tmp/wizard-screens
 ```
 
 `--render` 用 `ImageRenderer`，原生按鈕會顯示成黃色佔位符，這是正常的；實際外觀以 App 視窗為準。

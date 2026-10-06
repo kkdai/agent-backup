@@ -109,11 +109,45 @@ public struct RestoreContext {
 public struct RestorePlan {
     public var agentID: String
     public var writes: [PlannedWrite] = []
-    /// Things the user has to do by hand (log in, reinstall plugins, …).
-    public var notes: [String] = []
+    /// Things the user should know or do by hand (log in, reinstall plugins, …).
+    public var notes: [RestoreNote] = []
 
     public init(agentID: String) {
         self.agentID = agentID
+    }
+}
+
+/// Structured so each front end can word it in its own language.
+public enum RestoreNote: Hashable {
+    /// An MCP server differs on both sides and the local one was kept. `scope` is nil for user scope.
+    case mcpConflictKept(server: String, scope: String?)
+    case readdMarketplace(repo: String)
+    case reinstallPlugin(name: String)
+    /// The agent must not run while restoring (it rewrites its config).
+    case quitBeforeApplying(agent: String)
+    /// Login state is never backed up.
+    case logInAfterRestore(agent: String, command: String)
+    case unsupportedAgent(id: String)
+
+    /// A command the user can copy, if the note has one.
+    public var command: String? {
+        switch self {
+        case .readdMarketplace(let repo): "claude plugin marketplace add \(repo)"
+        case .reinstallPlugin(let name): "claude plugin install \(name)"
+        case .logInAfterRestore(_, let command): command
+        default: nil
+        }
+    }
+
+    public var message: String {
+        switch self {
+        case .mcpConflictKept(let server, let scope): "MCP server '\(server)' (\(scope ?? "user")) differs from this Mac; kept local."
+        case .readdMarketplace: "Re-add plugin marketplace: \(command!)"
+        case .reinstallPlugin: "Reinstall plugin: \(command!)"
+        case .quitBeforeApplying(let agent): "Quit \(agent) before applying: it rewrites its config while running."
+        case .logInAfterRestore(let agent, let command): "After restoring, run `\(command)` and log in to \(agent) — login state is never backed up."
+        case .unsupportedAgent(let id): "This version of the app can't restore '\(id)'; skipped."
+        }
     }
 }
 

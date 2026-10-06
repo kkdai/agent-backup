@@ -169,8 +169,6 @@ struct SnapshotsView: View {
                         }
                     }
                 }
-                Text("還原精靈即將推出（#9）。目前可以用 CLI：agent-backup restore --from gdrive")
-                    .font(.caption).foregroundStyle(.secondary)
             } else {
                 Card {
                     HStack {
@@ -194,9 +192,8 @@ struct SnapshotsView: View {
                 Text("\(snapshot.hostname) · \(Format.relative(snapshot.date))").font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Button("還原…") {}
-                .disabled(true)
-                .help("還原精靈即將推出（#9）")
+            Button("還原…") { Task { await model.startRestore(snapshotID: snapshot.id) } }
+                .help("把這份備份還原到這台 Mac")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -293,7 +290,7 @@ struct PassphraseSheet: View {
             if let error { Text(error).font(.callout).foregroundStyle(.red) }
             HStack {
                 Spacer()
-                Button("取消") { model.passphrasePrompt = nil }
+                Button("取消") { model.cancelPassphrase() }
                     .keyboardShortcut(.cancelAction)
                 Button {
                     working = true

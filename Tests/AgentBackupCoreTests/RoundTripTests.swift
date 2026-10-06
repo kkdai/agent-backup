@@ -120,7 +120,7 @@ struct RoundTripTests {
         let servers = try #require(claudeJSON["mcpServers"] as? [String: Any])
         #expect((servers["fs"] as? [String: Any])?["command"] as? String == "local-fs")
         #expect(servers["local"] != nil)
-        #expect(plans[0].notes.contains { $0.contains("'fs'") })
+        #expect(plans[0].notes.contains(.mcpConflictKept(server: "fs", scope: nil)))
 
         #expect(try read(".claude/settings.json", in: newHome) == #"{"model":"sonnet"}"#)
         let history = try read(".claude/history.jsonl", in: newHome).split(separator: "\n")
