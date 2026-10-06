@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import AgentBackupCore
 
-/// Backs up a fake `/…/old/evanlin` home and restores it into a fake `/…/new/evan` home.
+/// Backs up a fake `/…/old/alice` home and restores it into a fake `/…/new/al` home.
 struct RoundTripTests {
     let root: URL
     let oldHome: URL
@@ -11,8 +11,8 @@ struct RoundTripTests {
 
     init() throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("agent-backup-tests-\(UUID().uuidString)")
-        oldHome = root.appendingPathComponent("old/evanlin")
-        newHome = root.appendingPathComponent("new/evan")
+        oldHome = root.appendingPathComponent("old/alice")
+        newHome = root.appendingPathComponent("new/al")
         storeDir = root.appendingPathComponent("drive")
         try FileManager.default.createDirectory(at: newHome, withIntermediateDirectories: true)
     }
@@ -55,7 +55,7 @@ struct RoundTripTests {
         let engine = BackupEngine(store: LocalFolderStore(folder: storeDir), vault: vault)
         let result = try await engine.backup(
             providers: Providers.all(home: oldHome),
-            source: SourceInfo(hostname: "Old Mac", userName: "evanlin", home: oldHome.path)
+            source: SourceInfo(hostname: "Old Mac", userName: "alice", home: oldHome.path)
         )
         let plans = try await engine.planRestore(manifest: result.manifest, targetHome: newHome, policy: policy)
         return (engine, result.manifest, plans)
@@ -164,14 +164,14 @@ struct RoundTripTests {
         for file in FileManager.default.enumerator(atPath: store.path)!.compactMap({ $0 as? String }) where !file.hasSuffix("keyfile.json") {
             guard let data = FileManager.default.contents(atPath: store.appendingPathComponent(file).path) else { continue }
             let text = String(decoding: data, as: UTF8.self)
-            #expect(!text.contains("evanlin") && !text.contains("mcpServers") && !text.contains("remember this"), "\(file)")
+            #expect(!text.contains("alice") && !text.contains("mcpServers") && !text.contains("remember this"), "\(file)")
         }
     }
 
     @Test func secondBackupUploadsNothingNew() async throws {
         try seedOldHome()
         let engine = BackupEngine(store: LocalFolderStore(folder: storeDir), vault: vault)
-        let source = SourceInfo(hostname: "Old Mac", userName: "evanlin", home: oldHome.path)
+        let source = SourceInfo(hostname: "Old Mac", userName: "alice", home: oldHome.path)
         _ = try await engine.backup(providers: Providers.all(home: oldHome), source: source, now: Date(timeIntervalSince1970: 0))
         let second = try await engine.backup(providers: Providers.all(home: oldHome), source: source, now: Date(timeIntervalSince1970: 60))
         #expect(second.newBlobCount == 0)

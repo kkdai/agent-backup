@@ -31,7 +31,7 @@ public struct PathMapper {
         if active.isEmpty {
             regex = nil
         } else {
-            // A path segment boundary on both sides, so `/Users/evan` never matches inside `/Users/evanlin`.
+            // A path segment boundary on both sides, so `/Users/al` never matches inside `/Users/alice`.
             // A JSON escape (`\n/Users/…` in tool output) also counts as a boundary on the left.
             let boundary = "A-Za-z0-9_.\\-"
             let alternation = active.map { NSRegularExpression.escapedPattern(for: $0.from) }.joined(separator: "|")

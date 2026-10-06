@@ -36,12 +36,12 @@
 
 ### 3.1 路徑重寫（最重要）
 Sessions 裡大量嵌入絕對路徑：
-- Claude Code 的資料夾名稱就是編碼後的路徑：`-Users-evanlin-Documents-song-lingo`
+- Claude Code 的資料夾名稱就是編碼後的路徑：`-Users-alice-Documents-my-app`
 - jsonl 每一行都有 `cwd` 欄位
 - Codex `threads.cwd`、`rollout_path`
 - `~/.claude.json` 的 `projects` key 就是專案絕對路徑
 
-新電腦如果使用者名稱或專案位置不同（`/Users/evanlin` → `/Users/evan`），還原後 agent 會「找不到」這些 session。
+新電腦如果使用者名稱或專案位置不同（`/Users/alice` → `/Users/al`），還原後 agent 會「找不到」這些 session。
 **方案**：備份時把 `$HOME` 正規化成 `{{HOME}}` 佔位符；還原時讓使用者確認路徑對應表（例如 `~/Documents/x` → `~/Code/x`），再重寫資料夾名稱與內容。
 
 ### 3.2 機密資料
@@ -133,7 +133,7 @@ AgentBackup/                       ← 使用者看得到的資料夾（已決�
 **新電腦**
 1. 安裝 App → 登入同一個 Google 帳號 → 輸入 passphrase
 2. 選擇來源裝置與快照
-3. 路徑對應確認（自動猜測，例如偵測到 `~/Documents/song-lingo` 不存在時提示）
+3. 路徑對應確認（自動猜測，例如偵測到 `~/Documents/my-app` 不存在時提示）
 4. 預覽還原計畫（新增 / 衝突 / 跳過）→ 執行
 5. 提示需要重新登入的 agent（claude login、codex login…）與需要安裝的 MCP 依賴（`npx`、`uvx`、Docker）
 
@@ -183,7 +183,7 @@ AgentBackup/                       ← 使用者看得到的資料夾（已決�
 
 **路徑處理**
 - 專案資料夾名稱是有損編碼（`a.b` 與 `a-b` 都變成 `a-b`），所以從 `~/.claude.json`、history 或 session 的 `cwd` 還原真正路徑後再對應
-- 文字內容用 regex 重寫，左右兩邊都檢查路徑邊界（`/Users/evan` 不會誤中 `/Users/evanlin`），JSON 跳脫字元（`\n/Users/…`）也算邊界
+- 文字內容用 regex 重寫，左右兩邊都檢查路徑邊界（`/Users/al` 不會誤中 `/Users/alice`），JSON 跳脫字元（`\n/Users/…`）也算邊界
 - 還原後保留檔案的修改時間，`claude --resume` 的排序不會亂
 
 **合併規則**
