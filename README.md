@@ -7,7 +7,7 @@
 - 設計文件：[docs/DESIGN.md](docs/DESIGN.md)
 - UI 設計：[docs/UI.md](docs/UI.md)
 - Roadmap：[docs/ROADMAP.md](docs/ROADMAP.md)（[GitHub Milestones](https://github.com/kkdai/agent-backup/milestones)）
-- 目前進度：**M1** 完成、**M2** App 第一版（啟動自動偵測 agent 與大小、Google Drive 狀態、立即備份）；還原精靈開發中
+- 支援備份：**Claude Code**、**Codex CLI**（Gemini CLI、Copilot CLI、Claude Desktop 開發中）
 
 ## App
 

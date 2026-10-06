@@ -225,6 +225,7 @@ struct Restore: AsyncParsableCommand {
                     for w in writes { print("    \(displayPath(w.target, home: targetHome))\(w.detail.map { "  — \($0)" } ?? "")") }
                 }
             }
+            for action in plan.postActions { print("  ↻ \(action.description)") }
             for note in plan.notes { print("  • \(note.message)") }
         }
 

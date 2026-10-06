@@ -73,3 +73,23 @@ func planFileWrite(
         return planFileWrite(target: aside, data: data, kind: kind, modifiedAt: modifiedAt, policy: .replace)
     }
 }
+
+/// Union of two JSONL histories, de-duplicated by line and ordered by a numeric timestamp field.
+func planJSONLMerge(incoming: Data, target: URL, timestampKey: String, kind: ItemKind) -> PlannedWrite {
+    let localData = try? Data(contentsOf: target)
+    let lines = { (data: Data?) -> [Substring] in
+        String(decoding: data ?? Data(), as: UTF8.self).split(separator: "\n").filter { !$0.isEmpty }
+    }
+    var seen = Set<Substring>()
+    let merged = (lines(localData) + lines(incoming)).filter { seen.insert($0).inserted }
+    let timestamp = { (line: Substring) -> Double in
+        ((try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any])?[timestampKey] as? Double ?? 0
+    }
+    let sorted = merged.enumerated()
+        .sorted { (timestamp($0.element), $0.offset) < (timestamp($1.element), $1.offset) }
+        .map(\.element)
+    let data = Data((sorted.joined(separator: "\n") + "\n").utf8)
+    let action: PlannedWrite.Action = localData == nil ? .create : localData == data ? .unchanged : .update
+    return PlannedWrite(target: target, data: data, kind: kind, action: action,
+                        detail: "merged with this Mac's history", modifiedAt: nil)
+}
