@@ -26,6 +26,8 @@ public actor GoogleDriveStore: BackupStore {
     let rootName: String
     /// Above this size uploads use a resumable session instead of one multipart request.
     let multipartLimit: Int
+    /// Resumable uploads go in chunks of this size (Drive requires multiples of 256 KiB).
+    let chunkSize: Int
     let sleep: (Double) async -> Void
 
     private var folderIDs: (root: String, blobs: String, snapshots: String)?
@@ -40,13 +42,14 @@ public actor GoogleDriveStore: BackupStore {
 
     public init(
         tokens: AccessTokenProvider, http: HTTPTransport = URLSessionTransport(), rootName: String = "AgentBackup",
-        multipartLimit: Int = 5 << 20,
+        multipartLimit: Int = 5 << 20, chunkSize: Int = 8 << 20,
         sleep: @escaping (Double) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1e9)) }
     ) {
         self.tokens = tokens
         self.http = http
         self.rootName = rootName
         self.multipartLimit = multipartLimit
+        self.chunkSize = max(1, chunkSize)
         self.sleep = sleep
     }
 
@@ -233,21 +236,108 @@ public actor GoogleDriveStore: BackupStore {
             return try fileID(from: try await send(request))
         }
 
+        return try await resumableUpload(metadata: metadata, data: data, mimeType: mimeType)
+    }
+
+    // MARK: - Resumable upload
+
+    private enum UploadState {
+        case received(Int)
+        case complete(fileID: String)
+        case sessionGone
+    }
+
+    /// Uploads in chunks. After a failed chunk it asks Drive how much arrived and continues from
+    /// there; an expired session starts over. Gives up after 5 failures without progress.
+    private func resumableUpload(metadata: Data, data: Data, mimeType: String) async throws -> String {
+        var session = try await startResumableSession(metadata: metadata, size: data.count, mimeType: mimeType)
+        var offset = 0
+        var failures = 0
+        var lastError: Error = DriveError.badResponse("resumable upload failed")
+
+        while true {
+            let end = min(offset + chunkSize, data.count)
+            var put = URLRequest(url: session)
+            put.httpMethod = "PUT"
+            put.setValue(mimeType, forHTTPHeaderField: "Content-Type")
+            put.setValue("bytes \(offset)-\(end - 1)/\(data.count)", forHTTPHeaderField: "Content-Range")
+            put.httpBody = data.subdata(in: offset..<end)
+
+            let state: UploadState
+            do {
+                state = try await uploadState(after: try await authorizedSend(put))
+            } catch {
+                lastError = error
+                // The chunk may have partly arrived; ask before resending.
+                state = (try? await queryUploadState(session, size: data.count)) ?? .received(offset)
+                failures += 1
+            }
+
+            switch state {
+            case .complete(let fileID):
+                return fileID
+            case .received(let received):
+                if received > offset { failures = 0 }
+                offset = received
+            case .sessionGone:
+                failures += 1
+                session = try await startResumableSession(metadata: metadata, size: data.count, mimeType: mimeType)
+                offset = 0
+            }
+            if failures > 0 {
+                guard failures <= 5 else { throw lastError }
+                await sleep(pow(2, Double(failures - 1)) + Double.random(in: 0..<1))
+            }
+        }
+    }
+
+    private func startResumableSession(metadata: Data, size: Int, mimeType: String) async throws -> URL {
         var start = URLRequest(url: URL(string: "\(Self.uploadAPI)?uploadType=resumable&fields=id")!)
         start.httpMethod = "POST"
         start.setValue("application/json; charset=UTF-8", forHTTPHeaderField: "Content-Type")
         start.setValue(mimeType, forHTTPHeaderField: "X-Upload-Content-Type")
-        start.setValue(String(data.count), forHTTPHeaderField: "X-Upload-Content-Length")
+        start.setValue(String(size), forHTTPHeaderField: "X-Upload-Content-Length")
         start.httpBody = metadata
         let (_, response) = try await sendRaw(start)
         guard let location = response.value(forHTTPHeaderField: "Location").flatMap(URL.init(string:)) else {
             throw DriveError.badResponse("resumable upload returned no session URL")
         }
-        var put = URLRequest(url: location)
-        put.httpMethod = "PUT"
-        put.setValue(mimeType, forHTTPHeaderField: "Content-Type")
-        put.httpBody = data
-        return try fileID(from: try await send(put))
+        return location
+    }
+
+    private func queryUploadState(_ session: URL, size: Int) async throws -> UploadState {
+        var query = URLRequest(url: session)
+        query.httpMethod = "PUT"
+        query.setValue("bytes */\(size)", forHTTPHeaderField: "Content-Range")
+        query.httpBody = Data()
+        return try uploadState(after: try await authorizedSend(query))
+    }
+
+    /// 308 + `Range: bytes=0-N` → N+1 bytes received; 200/201 → done; 404/410 → session expired.
+    private func uploadState(after result: (Data, HTTPURLResponse)) throws -> UploadState {
+        let (body, response) = result
+        switch response.statusCode {
+        case 200, 201:
+            return .complete(fileID: try fileID(from: (try JSONSerialization.jsonObject(with: body) as? [String: Any]) ?? [:]))
+        case 308:
+            guard let range = response.value(forHTTPHeaderField: "Range"),
+                  let last = range.split(separator: "-").last.flatMap({ Int($0) }) else { return .received(0) }
+            return .received(last + 1)
+        case 404, 410:
+            return .sessionGone
+        case 401:
+            tokens.invalidate()
+            throw DriveError.http(401, "unauthorized")
+        default:
+            throw DriveError.http(response.statusCode, String(decoding: body.prefix(300), as: UTF8.self))
+        }
+    }
+
+    /// One request with auth and no status handling (resumable uploads interpret 308 themselves).
+    private func authorizedSend(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        var authed = request
+        authed.setValue("Bearer \(try await tokens.accessToken())", forHTTPHeaderField: "Authorization")
+        return try await http.send(authed)
     }
 
     static func parseDate(_ string: String) -> Date? {
