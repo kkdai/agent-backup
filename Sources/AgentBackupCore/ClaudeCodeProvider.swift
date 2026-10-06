@@ -201,8 +201,8 @@ public struct ClaudeCodeProvider: AgentProvider {
         }
 
         plan.notes += try await pluginNotes(pluginItems, context: context)
-        plan.notes.append("Quit Claude Code before applying: it rewrites ~/.claude.json while running.")
-        plan.notes.append("After restoring, run `claude` and log in — login state is never backed up.")
+        plan.notes.append(.quitBeforeApplying(agent: displayName))
+        plan.notes.append(.logInAfterRestore(agent: displayName, command: "claude"))
         return plan
     }
 
@@ -214,11 +214,11 @@ public struct ClaudeCodeProvider: AgentProvider {
     }
 
     /// Merges MCP servers server-by-server into this Mac's `~/.claude.json`, leaving every other key alone.
-    func planClaudeJSONMerge(extract: Data, policy: ConflictPolicy, modifiedAt: Date?) throws -> (PlannedWrite, [String]) {
+    func planClaudeJSONMerge(extract: Data, policy: ConflictPolicy, modifiedAt: Date?) throws -> (PlannedWrite, [RestoreNote]) {
         let incoming = (try JSONSerialization.jsonObject(with: extract) as? [String: Any]) ?? [:]
         let existing = readJSONObject(claudeJSON)
         var root = existing ?? [:]
-        var conflicts: [String] = []
+        var conflicts: [RestoreNote] = []
 
         func mergeServers(_ servers: [String: Any], into current: [String: Any], scope: String) -> [String: Any] {
             var merged = current
@@ -229,7 +229,7 @@ public struct ClaudeCodeProvider: AgentProvider {
                 }
                 if NSDictionary(dictionary: ["v": local]).isEqual(to: ["v": config]) { continue }
                 switch policy {
-                case .keep: conflicts.append("MCP server '\(name)' (\(scope)) differs from this Mac; kept local.")
+                case .keep: conflicts.append(.mcpConflictKept(server: name, scope: scope == "user" ? nil : scope))
                 case .replace: merged[name] = config
                 case .rename: merged["\(name)-restored"] = config
                 }
@@ -286,20 +286,20 @@ public struct ClaudeCodeProvider: AgentProvider {
     }
 
     /// Plugins are restored as instructions: copying the plugin cache across machines isn't safe.
-    func pluginNotes(_ items: [SnapshotItem], context: RestoreContext) async throws -> [String] {
-        var notes: [String] = []
+    func pluginNotes(_ items: [SnapshotItem], context: RestoreContext) async throws -> [RestoreNote] {
+        var notes: [RestoreNote] = []
         for item in items {
             guard let root = try JSONSerialization.jsonObject(with: try await context.load(item)) as? [String: Any] else { continue }
             if item.path.hasSuffix("known_marketplaces.json") {
                 for (name, value) in root.sorted(by: { $0.key < $1.key }) where name != "claude-plugins-official" {
                     let source = (value as? [String: Any])?["source"] as? [String: Any]
                     if let repo = source?["repo"] as? String ?? source?["url"] as? String {
-                        notes.append("Re-add plugin marketplace: claude plugin marketplace add \(repo)")
+                        notes.append(.readdMarketplace(repo: repo))
                     }
                 }
             } else if let plugins = root["plugins"] as? [String: Any] {
                 for name in plugins.keys.sorted() {
-                    notes.append("Reinstall plugin: claude plugin install \(name)")
+                    notes.append(.reinstallPlugin(name: name))
                 }
             }
         }

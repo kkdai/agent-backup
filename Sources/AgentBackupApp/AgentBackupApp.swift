@@ -6,7 +6,12 @@ import SwiftUI
 enum Main {
     static func main() {
         // `--render <dir>` writes PNGs of each screen with live data and exits (used for UI review in CI/agents).
-        if let index = CommandLine.arguments.firstIndex(of: "--render"), index + 1 < CommandLine.arguments.count {
+        let args = CommandLine.arguments
+        if let index = args.firstIndex(of: "--render-wizard"), index + 3 < args.count {
+            // --render-wizard <backup folder> <target home> <output dir>; passphrase from AGENT_BACKUP_PASSPHRASE.
+            ScreenRenderer.runWizard(backup: URL(fileURLWithPath: args[index + 1]), home: URL(fileURLWithPath: args[index + 2]),
+                                     outputDirectory: URL(fileURLWithPath: args[index + 3]))
+        } else if let index = CommandLine.arguments.firstIndex(of: "--render"), index + 1 < CommandLine.arguments.count {
             ScreenRenderer.run(outputDirectory: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
         } else {
             AgentBackupApp.main()
@@ -87,6 +92,9 @@ struct ContentView: View {
         .sheet(item: $model.passphrasePrompt) { prompt in
             PassphraseSheet(prompt: prompt).environment(model)
         }
+        .sheet(item: $model.restoreWizard) { wizard in
+            RestoreWizardView(wizard: wizard)
+        }
     }
 }
 
@@ -131,6 +139,39 @@ enum ScreenRenderer {
                     try? png.write(to: file)
                     print(file.path)
                 }
+            }
+            exit(0)
+        }
+        RunLoop.main.run()
+    }
+
+    /// Walks the restore wizard against a local backup folder, restoring into `home`.
+    static func runWizard(backup: URL, home: URL, outputDirectory: URL) {
+        _ = NSApplication.shared
+        Task { @MainActor in
+            do {
+                let store = LocalFolderStore(folder: backup)
+                guard let keyfile = try await BackupEngine.keyfile(in: store) else { throw BackupError.notInitialized }
+                let vault = try Vault.unlock(keyfile, passphrase: ProcessInfo.processInfo.environment["AGENT_BACKUP_PASSPHRASE"] ?? "")
+                let snapshots = try await store.snapshotIDs().compactMap(SnapshotRef.init).sorted { $0.date > $1.date }
+                let wizard = RestoreWizardModel(app: nil, engine: BackupEngine(store: store, vault: vault),
+                                                snapshots: snapshots, selected: nil, home: home)
+                try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+                while wizard.manifest == nil || wizard.isLoadingManifest { try await Task.sleep(nanoseconds: 50_000_000) }
+                for step in RestoreWizardModel.Step.allCases {
+                    if step != .snapshot { await wizard.next() }
+                    if let error = wizard.error { print("error at \(step): \(error)") }
+                    let renderer = ImageRenderer(content: RestoreWizardView(wizard: wizard, scrollable: false).background(Color(nsColor: .windowBackgroundColor)))
+                    renderer.scale = 1.5
+                    if let tiff = renderer.nsImage?.tiffRepresentation,
+                       let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                        let file = outputDirectory.appendingPathComponent("wizard-\(step.rawValue + 1)-\(step).png")
+                        try png.write(to: file)
+                        print(file.path)
+                    }
+                }
+            } catch {
+                print("render failed: \(error)")
             }
             exit(0)
         }

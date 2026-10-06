@@ -137,7 +137,7 @@ public struct BackupEngine {
         for agent in manifest.agents where agentIDs?.contains(agent.agentID) ?? true {
             guard let provider = Providers.provider(id: agent.agentID, home: targetHome) else {
                 var plan = RestorePlan(agentID: agent.agentID)
-                plan.notes.append("This version of the app can't restore '\(agent.agentID)'; skipped.")
+                plan.notes.append(.unsupportedAgent(id: agent.agentID))
                 plans.append(plan)
                 continue
             }

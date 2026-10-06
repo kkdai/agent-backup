@@ -192,23 +192,23 @@ final class AppModel {
         await refreshDrive()
     }
 
-    // MARK: - Backup
+    // MARK: - Keys
 
-    func startBackup() async {
-        guard let store, canBackUp else { return }
-        do {
-            if let keyfile = try await BackupEngine.keyfile(in: store) {
-                if let vault = keys.cachedVault(for: keyfile) {
-                    await runBackup(store: store, vault: vault)
-                } else {
-                    passphrasePrompt = .unlock(keyfile)
-                }
-            } else {
-                passphrasePrompt = .create
-            }
-        } catch {
-            backupState = .failed(error.localizedDescription)
+    private var vaultRequest: CheckedContinuation<Vault, Error>?
+
+    /// The unlocked key for the Drive backup: from Keychain if this Mac unlocked it before,
+    /// otherwise by showing the passphrase sheet (create or unlock) and waiting for it.
+    func requestVault(allowCreate: Bool) async throws -> (GoogleDriveStore, Vault) {
+        guard let store else { throw GoogleAuthError.notLoggedIn }
+        let keyfile = try await BackupEngine.keyfile(in: store)
+        if let keyfile, let vault = keys.cachedVault(for: keyfile) { return (store, vault) }
+        guard keyfile != nil || allowCreate else { throw BackupError.notInitialized }
+        vaultRequest?.resume(throwing: CancellationError())
+        let vault = try await withCheckedThrowingContinuation { continuation in
+            vaultRequest = continuation
+            passphrasePrompt = keyfile.map { .unlock($0) } ?? .create
         }
+        return (store, vault)
     }
 
     /// Called by the passphrase sheet; throws so the sheet can show "wrong passphrase" inline.
@@ -224,7 +224,44 @@ final class AppModel {
             vault = try await keys.create(in: store, passphrase: passphrase)
         }
         passphrasePrompt = nil
-        await runBackup(store: store, vault: vault)
+        vaultRequest?.resume(returning: vault)
+        vaultRequest = nil
+    }
+
+    func cancelPassphrase() {
+        passphrasePrompt = nil
+        vaultRequest?.resume(throwing: CancellationError())
+        vaultRequest = nil
+    }
+
+    // MARK: - Backup
+
+    func startBackup() async {
+        guard canBackUp else { return }
+        do {
+            let (store, vault) = try await requestVault(allowCreate: true)
+            await runBackup(store: store, vault: vault)
+        } catch is CancellationError {
+            return
+        } catch {
+            backupState = .failed(error.localizedDescription)
+        }
+    }
+
+    // MARK: - Restore
+
+    var restoreWizard: RestoreWizardModel?
+
+    func startRestore(snapshotID: String?) async {
+        do {
+            let (store, vault) = try await requestVault(allowCreate: false)
+            restoreWizard = RestoreWizardModel(app: self, engine: BackupEngine(store: store, vault: vault),
+                                               snapshots: driveStatus?.snapshots ?? [], selected: snapshotID)
+        } catch is CancellationError {
+            return
+        } catch {
+            rollbackMessage = "無法開始還原：\(error.localizedDescription)"
+        }
     }
 
     private func runBackup(store: GoogleDriveStore, vault: Vault) async {
