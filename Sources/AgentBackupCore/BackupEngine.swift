@@ -41,6 +41,24 @@ public struct BackupEngine {
         return (vault, keyfile)
     }
 
+    /// Re-wraps the same data key under a new passphrase, so every existing snapshot stays readable
+    /// and the old passphrase stops working. Verifies before writing and after reading back.
+    public static func changePassphrase(
+        in store: BackupStore, current: String, new: String, iterations: Int = Vault.defaultIterations
+    ) async throws -> (Vault, Keyfile) {
+        guard let data = try await store.keyfile() else { throw BackupError.notInitialized }
+        let vault = try Vault.unlock(try Keyfile.decode(data), passphrase: current)
+        let keyfile = try vault.keyfile(passphrase: new, iterations: iterations)
+        guard try Vault.unlock(keyfile, passphrase: new).rawKey == vault.rawKey else {
+            throw BackupError.keyfileVerificationFailed
+        }
+        try await store.replaceKeyfile(try keyfile.encoded())
+        guard let stored = try await store.keyfile(), try Keyfile.decode(stored) == keyfile else {
+            throw BackupError.keyfileVerificationFailed
+        }
+        return (vault, keyfile)
+    }
+
     // MARK: - Snapshots
 
     /// Newest first.

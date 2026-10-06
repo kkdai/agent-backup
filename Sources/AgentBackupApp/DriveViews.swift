@@ -5,6 +5,8 @@ import SwiftUI
 struct DriveView: View {
     @Environment(AppModel.self) private var model
     @State private var setupError: String?
+    @State private var changingPassphrase = false
+    @State private var passphraseChanged = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -135,8 +137,17 @@ struct DriveView: View {
             }
             HStack {
                 Button("重新整理") { Task { await model.refreshDrive() } }
+                if status.initialized {
+                    Button("更換 passphrase…") { changingPassphrase = true }
+                }
+                if passphraseChanged {
+                    Label("已更換 passphrase", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                }
                 Spacer()
                 Button("登出", role: .destructive) { Task { await model.logout() } }
+            }
+            .sheet(isPresented: $changingPassphrase) {
+                ChangePassphraseSheet { passphraseChanged = true }.environment(model)
             }
         }
     }
@@ -255,6 +266,59 @@ struct RollbackSection: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+}
+
+struct ChangePassphraseSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    var onChanged: () -> Void
+    @State private var current = ""
+    @State private var new = ""
+    @State private var confirmation = ""
+    @State private var error: String?
+    @State private var working = false
+
+    private var valid: Bool { !current.isEmpty && new.count >= 8 && new == confirmation && new != current }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("更換備份 passphrase", systemImage: "key.fill").font(.title2.weight(.semibold))
+            Text("現有的備份不用重新加密，換完後舊的 passphrase 就不能用了。其他 Mac 下次會要求輸入新的。")
+                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            SecureField("目前的 passphrase", text: $current)
+            SecureField("新的 passphrase（至少 8 個字元）", text: $new)
+            SecureField("再輸入一次新的", text: $confirmation)
+            if !confirmation.isEmpty && new != confirmation {
+                Text("兩次輸入不一樣").font(.caption).foregroundStyle(.orange)
+            }
+            if let error { Text(error).font(.callout).foregroundStyle(.red) }
+            HStack {
+                Spacer()
+                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button {
+                    working = true
+                    Task {
+                        do {
+                            try await model.changePassphrase(current: current, new: new)
+                            onChanged()
+                            dismiss()
+                        } catch {
+                            self.error = error.localizedDescription
+                        }
+                        working = false
+                    }
+                } label: {
+                    if working { ProgressView().controlSize(.small) } else { Text("更換") }
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .disabled(!valid || working)
+            }
+        }
+        .textFieldStyle(.roundedBorder)
+        .padding(24)
+        .frame(width: 440)
     }
 }
 

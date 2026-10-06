@@ -47,6 +47,10 @@ final class FakeDrive: HTTPTransport {
         case ("PUT", let path) where path.hasPrefix("/upload/session/"):
             let session = sessions[url.lastPathComponent]!
             return respond(200, json: ["id": create(["name": session.name, "parents": [session.parent]], data: request.httpBody ?? Data())])
+        case ("PATCH", let path) where path.hasPrefix("/upload/drive/v3/files/") && query["uploadType"] == "media":
+            guard files[url.lastPathComponent] != nil else { return respond(404, json: [:]) }
+            files[url.lastPathComponent]!.data = request.httpBody ?? Data()
+            return respond(200, json: ["id": url.lastPathComponent])
         case ("GET", let path) where path.hasPrefix("/drive/v3/files/") && query["alt"] == "media":
             guard let file = files[url.lastPathComponent] else { return respond(404, json: [:]) }
             return (file.data, HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)

@@ -63,6 +63,17 @@ public final class GoogleDriveStore: BackupStore {
         _ = try await upload(name: "keyfile.json", parent: root, data: data, mimeType: "application/json")
     }
 
+    public func replaceKeyfile(_ data: Data) async throws {
+        let root = try await folders().root
+        guard let id = try await find(name: "keyfile.json", parent: root) else { throw BackupError.notInitialized }
+        // Updating content in place keeps the file ID; Drive applies it atomically.
+        var request = URLRequest(url: URL(string: "\(Self.uploadAPI)/\(id)?uploadType=media&fields=id")!)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = data
+        _ = try await send(request)
+    }
+
     public func blobIDs() async throws -> Set<String> {
         Set(try await blobIndex().keys)
     }

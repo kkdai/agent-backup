@@ -14,7 +14,10 @@ public protocol BackupStore {
     var displayName: String { get }
 
     func keyfile() async throws -> Data?
+    /// Creates the keyfile; fails if one exists.
     func putKeyfile(_ data: Data) async throws
+    /// Overwrites the existing keyfile (passphrase change).
+    func replaceKeyfile(_ data: Data) async throws
 
     func blobIDs() async throws -> Set<String>
     func putBlob(_ id: String, _ data: Data) async throws
@@ -29,6 +32,8 @@ public enum BackupError: LocalizedError, Equatable {
     case snapshotNotFound(String)
     case noSnapshots
     case notInitialized
+    case keyfileExists
+    case keyfileVerificationFailed
     case unsupportedFormat(Int)
 
     public var errorDescription: String? {
@@ -36,6 +41,8 @@ public enum BackupError: LocalizedError, Equatable {
         case .snapshotNotFound(let id): "Snapshot \(id) not found."
         case .noSnapshots: "No snapshots in this backup location."
         case .notInitialized: "This location has no backup yet (no keyfile.json)."
+        case .keyfileExists: "This location already has a keyfile."
+        case .keyfileVerificationFailed: "The new keyfile could not be verified; the passphrase was not changed."
         case .unsupportedFormat(let v): "Snapshot format \(v) is newer than this app supports."
         }
     }
@@ -69,6 +76,12 @@ public final class LocalFolderStore: BackupStore {
     }
 
     public func putKeyfile(_ data: Data) async throws {
+        guard !fm.fileExists(atPath: keyfileURL.path) else { throw BackupError.keyfileExists }
+        try write(data, to: keyfileURL)
+    }
+
+    public func replaceKeyfile(_ data: Data) async throws {
+        guard fm.fileExists(atPath: keyfileURL.path) else { throw BackupError.notInitialized }
         try write(data, to: keyfileURL)
     }
 
