@@ -234,6 +234,12 @@ final class AppModel {
         vaultRequest = nil
     }
 
+    func changePassphrase(current: String, new: String) async throws {
+        guard let store else { throw GoogleAuthError.notLoggedIn }
+        _ = try await keys.changePassphrase(in: store, current: current, new: new)
+        await refreshDrive()
+    }
+
     // MARK: - Backup
 
     func startBackup() async {

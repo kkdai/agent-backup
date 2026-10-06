@@ -31,6 +31,16 @@ public struct KeyManager {
         return vault
     }
 
+    /// Changes the location's passphrase and moves the Keychain cache to the new keyfile.
+    public func changePassphrase(in store: BackupStore, current: String, new: String,
+                                 iterations: Int = Vault.defaultIterations) async throws -> Vault {
+        let old = try await BackupEngine.keyfile(in: store)
+        let (vault, keyfile) = try await BackupEngine.changePassphrase(in: store, current: current, new: new, iterations: iterations)
+        if let old { forget(old) }
+        if cachesKeys { try? secrets.set(Self.account(keyfile), vault.rawKey) }
+        return vault
+    }
+
     public func forget(_ keyfile: Keyfile) {
         secrets.delete(Self.account(keyfile))
     }

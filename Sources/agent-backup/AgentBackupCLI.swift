@@ -11,9 +11,10 @@ struct AgentBackupCLI: AsyncParsableCommand {
         discussion: """
         A backup LOCATION is either `gdrive` (My Drive/AgentBackup) or a local folder path.
         Everything stored there is encrypted with a key protected by your passphrase.
-        Set AGENT_BACKUP_PASSPHRASE to skip the prompt; AGENT_BACKUP_NO_KEYCHAIN=1 to not cache the unlocked key.
+        Set AGENT_BACKUP_PASSPHRASE to skip the prompt (AGENT_BACKUP_NEW_PASSPHRASE for `passphrase change`);
+        AGENT_BACKUP_NO_KEYCHAIN=1 to not cache the unlocked key.
         """,
-        subcommands: [Detect.self, Backup.self, Snapshots.self, Restore.self, Rollback.self, Lock.self, Drive.self]
+        subcommands: [Detect.self, Backup.self, Snapshots.self, Restore.self, Rollback.self, Passphrase.self, Lock.self, Drive.self]
     )
 }
 
@@ -267,6 +268,35 @@ struct Rollback: ParsableCommand {
         try ensureAgentsStopped(["claude-code"], home: home.url, force: force)
         let result = try point.undo(home: home.url)
         print("\nUndone: put back \(result.restored), deleted \(result.deleted).")
+    }
+}
+
+struct Passphrase: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Manage the backup passphrase.",
+        subcommands: [Change.self]
+    )
+
+    struct Change: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Change the passphrase. Existing snapshots stay readable; the old passphrase stops working."
+        )
+        @Option(name: .customLong("from"), help: "Backup location: `gdrive` or a folder.")
+        var location: String
+
+        func run() async throws {
+            let store = try openStore(location)
+            guard try await BackupEngine.keyfile(in: store) != nil else { throw BackupError.notInitialized }
+            let env = ProcessInfo.processInfo.environment
+            let current = try env["AGENT_BACKUP_PASSPHRASE"] ?? readPassphrase("Current passphrase: ")
+            let new = try env["AGENT_BACKUP_NEW_PASSPHRASE"] ?? readPassphrase("New passphrase: ")
+            guard new.count >= 8 else { throw ValidationError("Use at least 8 characters.") }
+            if env["AGENT_BACKUP_NEW_PASSPHRASE"] == nil, try readPassphrase("Repeat new passphrase: ") != new {
+                throw ValidationError("Passphrases don't match.")
+            }
+            _ = try await keys.changePassphrase(in: store, current: current, new: new)
+            print("Passphrase changed for \(store.displayName). Other Macs will ask for the new one next time.")
+        }
     }
 }
 
