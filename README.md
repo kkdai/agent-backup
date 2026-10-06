@@ -7,7 +7,7 @@
 - 設計文件：[docs/DESIGN.md](docs/DESIGN.md)
 - UI 設計：[docs/UI.md](docs/UI.md)
 - Roadmap：[docs/ROADMAP.md](docs/ROADMAP.md)（[GitHub Milestones](https://github.com/kkdai/agent-backup/milestones)）
-- 支援備份：**Claude Code**、**Codex CLI**、**Gemini CLI**、**GitHub Copilot CLI**（Claude Desktop 開發中）
+- 支援備份：**Claude Code**、**Codex CLI**、**Gemini CLI**、**GitHub Copilot CLI**、**Claude Desktop**（MCP 設定）
 
 ## App
 

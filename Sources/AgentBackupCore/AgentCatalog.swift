@@ -50,7 +50,7 @@ public enum AgentCatalog {
                    paths: [".gemini"], apps: [], mcp: { jsonMCP($0.appendingPathComponent(".gemini/settings.json")) }),
         Definition(id: "copilot-cli", name: "GitHub Copilot CLI", support: .supported,
                    paths: [".copilot"], apps: [], mcp: { jsonMCP($0.appendingPathComponent(".copilot/mcp-config.json")) }),
-        Definition(id: "claude-desktop", name: "Claude Desktop", support: .planned(issue: 15),
+        Definition(id: "claude-desktop", name: "Claude Desktop", support: .supported,
                    paths: ["Library/Application Support/Claude/claude_desktop_config.json"], apps: ["/Applications/Claude.app"],
                    mcp: { jsonMCP($0.appendingPathComponent("Library/Application Support/Claude/claude_desktop_config.json")) }),
         Definition(id: "cursor", name: "Cursor", support: .planned(issue: 18),

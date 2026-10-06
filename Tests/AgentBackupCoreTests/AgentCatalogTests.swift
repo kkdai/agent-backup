@@ -31,7 +31,7 @@ struct AgentCatalogTests {
         #expect(gemini.mcpServers.first?.target == "https://example.com/mcp")
 
         #expect(agents.first { $0.id == "codex" }?.installed == false)
-        #expect(agents.first { $0.id == "claude-desktop" }?.support == .planned(issue: 15))
+        #expect(agents.first { $0.id == "cursor" }?.support == .planned(issue: 18))
     }
 
     @Test func readsCodexMCPServerNames() throws {

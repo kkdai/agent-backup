@@ -12,10 +12,13 @@ public enum RunningAgents {
     }
 
     static let signatures: [String: Signature] = [
-        "claude-code": Signature(executables: ["claude"], argumentMarkers: ["@anthropic-ai/claude-code", "claude-code/cli"]),
-        "codex": Signature(executables: ["codex"], argumentMarkers: ["@openai/codex"]),
-        "gemini-cli": Signature(executables: ["gemini"], argumentMarkers: ["@google/gemini-cli"]),
-        "copilot-cli": Signature(executables: ["copilot"], argumentMarkers: ["@github/copilot"]),
+        // Markers end in "/" so sibling packages (e.g. @github/copilot-language-server) don't match.
+        "claude-code": Signature(executables: ["claude"], argumentMarkers: ["@anthropic-ai/claude-code/"]),
+        "codex": Signature(executables: ["codex"], argumentMarkers: ["@openai/codex/"]),
+        "gemini-cli": Signature(executables: ["gemini"], argumentMarkers: ["@google/gemini-cli/"]),
+        "copilot-cli": Signature(executables: ["copilot"], argumentMarkers: ["@github/copilot/"]),
+        // The app's main process; its helpers are "Claude Helper (…)".
+        "claude-desktop": Signature(executables: ["Claude"], argumentMarkers: []),
     ]
 
     public struct Process: Equatable {
