@@ -188,7 +188,8 @@ public struct ClaudeCodeProvider: AgentProvider {
                 plan.notes += conflicts
             case .history:
                 let incoming = context.mapper.rewrite(try await context.load(item))
-                plan.writes.append(planHistoryMerge(incoming: incoming, target: home.appendingPathComponent(item.path), modifiedAt: item.modifiedAt))
+                plan.writes.append(planJSONLMerge(incoming: incoming, target: home.appendingPathComponent(item.path),
+                                                  timestampKey: "timestamp", kind: .history))
             case .pluginManifest:
                 pluginItems.append(item)
             default:
@@ -263,26 +264,6 @@ public struct ClaudeCodeProvider: AgentProvider {
         let write = PlannedWrite(target: claudeJSON, data: data, kind: .mcpConfig, action: action,
                                  detail: "merged MCP servers into ~/.claude.json", modifiedAt: nil)
         return (write, conflicts)
-    }
-
-    /// Union of both histories, de-duplicated and ordered by timestamp.
-    func planHistoryMerge(incoming: Data, target: URL, modifiedAt: Date?) -> PlannedWrite {
-        let localData = try? Data(contentsOf: target)
-        let lines = { (data: Data?) -> [Substring] in
-            String(decoding: data ?? Data(), as: UTF8.self).split(separator: "\n").filter { !$0.isEmpty }
-        }
-        var seen = Set<Substring>()
-        let merged = (lines(localData) + lines(incoming)).filter { seen.insert($0).inserted }
-        let timestamp = { (line: Substring) -> Double in
-            ((try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any])?["timestamp"] as? Double ?? 0
-        }
-        let sorted = merged.enumerated()
-            .sorted { (timestamp($0.element), $0.offset) < (timestamp($1.element), $1.offset) }
-            .map(\.element)
-        let data = Data((sorted.joined(separator: "\n") + "\n").utf8)
-        let action: PlannedWrite.Action = localData == nil ? .create : localData == data ? .unchanged : .update
-        return PlannedWrite(target: target, data: data, kind: .history, action: action,
-                            detail: "merged with this Mac's history", modifiedAt: nil)
     }
 
     /// Plugins are restored as instructions: copying the plugin cache across machines isn't safe.

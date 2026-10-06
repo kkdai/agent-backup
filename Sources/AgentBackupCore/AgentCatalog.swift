@@ -44,7 +44,7 @@ public enum AgentCatalog {
     static let definitions: [Definition] = [
         Definition(id: "claude-code", name: "Claude Code", support: .supported,
                    paths: [".claude", ".claude.json"], apps: [], mcp: { _ in [] }),
-        Definition(id: "codex", name: "Codex CLI", support: .planned(issue: 12),
+        Definition(id: "codex", name: "Codex CLI", support: .supported,
                    paths: [".codex"], apps: [], mcp: { codexMCP($0.appendingPathComponent(".codex/config.toml")) }),
         Definition(id: "gemini-cli", name: "Gemini CLI", support: .planned(issue: 13),
                    paths: [".gemini"], apps: [], mcp: { jsonMCP($0.appendingPathComponent(".gemini/settings.json")) }),

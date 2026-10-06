@@ -216,7 +216,10 @@ public struct BackupEngine {
     public static func apply(_ plans: [RestorePlan], home: URL, now: Date = Date()) throws -> ApplyResult {
         let fm = FileManager.default
         let writes = plans.flatMap(\.writes).filter(\.writes)
-        guard !writes.isEmpty else { return ApplyResult(written: 0, rollbackDir: nil) }
+        guard !writes.isEmpty else {
+            for action in plans.flatMap(\.postActions) { try perform(action) }
+            return ApplyResult(written: 0, rollbackDir: nil)
+        }
 
         let point = try RollbackPoint.create(home: home, date: now)
         var created: [String] = []
@@ -238,6 +241,7 @@ public struct BackupEngine {
             // Written after every file, so an interrupted restore can still be rolled back.
             try point.recordCreated(created)
         }
+        for action in plans.flatMap(\.postActions) { try perform(action) }
         return ApplyResult(written: writes.count, rollbackDir: point.url)
     }
 }

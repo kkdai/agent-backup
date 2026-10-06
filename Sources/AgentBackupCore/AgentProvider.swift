@@ -15,7 +15,7 @@ public protocol AgentProvider {
 
 public enum Providers {
     public static func all(home: URL) -> [AgentProvider] {
-        [ClaudeCodeProvider(home: home)]
+        [ClaudeCodeProvider(home: home), CodexProvider(home: home)]
     }
 
     public static func provider(id: String, home: URL) -> AgentProvider? {
@@ -111,9 +111,23 @@ public struct RestorePlan {
     public var writes: [PlannedWrite] = []
     /// Things the user should know or do by hand (log in, reinstall plugins, …).
     public var notes: [RestoreNote] = []
+    /// Run after the files are written (not undone by rollback; each must be safe to repeat).
+    public var postActions: [PostAction] = []
 
     public init(agentID: String) {
         self.agentID = agentID
+    }
+}
+
+public enum PostAction: Equatable {
+    /// Makes Codex re-index its session files on next start (`backfill_state` → pending, no watermark).
+    /// Codex upserts while keeping existing titles, so this is safe on a populated index.
+    case reindexCodexSessions(database: URL)
+
+    public var description: String {
+        switch self {
+        case .reindexCodexSessions(let db): "Ask Codex to re-index sessions on next start (\(db.lastPathComponent))"
+        }
     }
 }
 

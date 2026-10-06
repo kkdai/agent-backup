@@ -330,7 +330,8 @@ private struct ManifestSummary: View {
             }
             ForEach(manifest.agents, id: \.agentID) { agent in
                 Divider()
-                Text(agent.agentID == "claude-code" ? "Claude Code" : agent.agentID).font(.subheadline.weight(.semibold))
+                Text(Providers.provider(id: agent.agentID, home: URL(fileURLWithPath: NSHomeDirectory()))?.displayName ?? agent.agentID)
+                    .font(.subheadline.weight(.semibold))
                 let counts = Dictionary(grouping: agent.items, by: \.kind)
                 ForEach(ItemKind.allCases.filter { counts[$0] != nil }, id: \.self) { kind in
                     HStack {
