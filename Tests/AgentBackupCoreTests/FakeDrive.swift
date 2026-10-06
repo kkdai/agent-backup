@@ -21,7 +21,20 @@ final class FakeDrive: HTTPTransport {
     private var nextID = 0
     private var sessions: [String: (name: String, parent: String)] = [:]
 
+    private let lock = NSLock()
+    /// Highest number of requests in flight at once, to check uploads run in parallel.
+    private(set) var maxConcurrent = 0
+    private var inFlight = 0
+    var latency: UInt64 = 0
+
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        lock.withLock { inFlight += 1; maxConcurrent = max(maxConcurrent, inFlight) }
+        if latency > 0 { try await Task.sleep(nanoseconds: latency) }
+        defer { lock.withLock { inFlight -= 1 } }
+        return try lock.withLock { try handle(request) }
+    }
+
+    private func handle(_ request: URLRequest) throws -> (Data, HTTPURLResponse) {
         let url = request.url!
         let method = request.httpMethod ?? "GET"
         requests.append("\(method) \(url.path)")

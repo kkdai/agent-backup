@@ -287,7 +287,9 @@ final class AppModel {
                 providers: Providers.all(home: home), source: source
             ) { progress in
                 Task { @MainActor [weak self] in
-                    guard let self, self.isBackingUp else { return }
+                    guard let self, case .running(let current) = self.backupState else { return }
+                    // Updates come from parallel uploads and may arrive out of order.
+                    if let current, current.filesDone >= progress.filesDone { return }
                     self.backupState = .running(progress)
                 }
             }

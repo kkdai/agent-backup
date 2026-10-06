@@ -16,7 +16,7 @@ public enum DriveError: LocalizedError, Equatable {
 ///
 /// `drive.file` means the app sees only files it created itself — but that's per OAuth
 /// client, not per device, so a second Mac running the same app sees the same backup.
-public final class GoogleDriveStore: BackupStore {
+public actor GoogleDriveStore: BackupStore {
     static let api = "https://www.googleapis.com/drive/v3/files"
     static let uploadAPI = "https://www.googleapis.com/upload/drive/v3/files"
     static let folderType = "application/vnd.google-apps.folder"
@@ -50,7 +50,7 @@ public final class GoogleDriveStore: BackupStore {
         self.sleep = sleep
     }
 
-    public var displayName: String { "Google Drive › \(rootName)" }
+    public nonisolated var displayName: String { "Google Drive › \(rootName)" }
 
     // MARK: - BackupStore
 

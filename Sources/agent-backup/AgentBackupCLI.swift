@@ -130,7 +130,21 @@ struct Backup: AsyncParsableCommand {
             hostname: Host.current().localizedName ?? ProcessInfo.processInfo.hostName,
             userName: homeURL.lastPathComponent, home: homeURL.path
         )
-        let result = try await engine.backup(providers: Providers.all(home: homeURL), source: source)
+        let showProgress = isatty(STDERR_FILENO) != 0
+        let lock = NSLock()
+        var shown = -1
+        let result = try await engine.backup(providers: Providers.all(home: homeURL), source: source) { p in
+            guard showProgress else { return }
+            lock.withLock {
+                guard p.filesDone > shown else { return }
+                shown = p.filesDone
+                let width = 30
+                let filled = p.filesTotal == 0 ? width : width * p.filesDone / p.filesTotal
+                let bar = String(repeating: "█", count: filled) + String(repeating: "·", count: width - filled)
+                FileHandle.standardError.write(Data("\r  \(bar) \(p.filesDone)/\(p.filesTotal) files · \(formatBytes(p.bytesUploaded)) uploaded ".utf8))
+            }
+        }
+        if showProgress { FileHandle.standardError.write(Data("\n".utf8)) }
         print("Snapshot \(result.manifest.id) → \(store.displayName)")
         for agent in result.manifest.agents {
             let counts = Dictionary(grouping: agent.items, by: \.kind)

@@ -13,6 +13,35 @@ public struct BackupProgress {
     public var bytesUploaded: Int
 }
 
+/// Shared state of one backup's parallel uploads.
+actor UploadTracker {
+    private var known: Set<String>
+    private let total: Int
+    private var done = 0
+    private var bytes = 0
+    private(set) var newBlobs = 0
+
+    init(stored: Set<String>, total: Int) {
+        known = stored
+        self.total = total
+    }
+
+    /// True if the caller should upload this blob (first to see it, and not already stored).
+    func claim(_ id: String) -> Bool {
+        guard known.insert(id).inserted else { return false }
+        newBlobs += 1
+        return true
+    }
+
+    func finished(uploadedBytes: Int) -> BackupProgress {
+        done += 1
+        bytes += uploadedBytes
+        return progress
+    }
+
+    var progress: BackupProgress { BackupProgress(filesDone: done, filesTotal: total, bytesUploaded: bytes) }
+}
+
 public struct ApplyResult {
     public var written: Int
     public var rollbackDir: URL?
@@ -79,42 +108,60 @@ public struct BackupEngine {
 
     // MARK: - Backup
 
+    /// How many files are read, encrypted and uploaded at once.
+    public static let defaultConcurrency = 6
+
     public func backup(
         providers: [AgentProvider], source: SourceInfo, now: Date = Date(),
+        concurrency: Int = BackupEngine.defaultConcurrency,
         progress: ((BackupProgress) -> Void)? = nil
     ) async throws -> BackupResult {
-        var agents: [AgentSnapshot] = []
-        var fileCount = 0, newBlobs = 0, uploaded = 0
-        var stored = try await store.blobIDs()
+        let collected = try providers.filter { $0.isInstalled() }.map { ($0.id, try $0.collect()) }
+        let files = collected.flatMap { agent, files in files.map { (agent, $0) } }
+        let tracker = UploadTracker(stored: try await store.blobIDs(), total: files.count)
+        progress?(await tracker.progress)
 
-        let collected = try providers.filter { $0.isInstalled() }.map { ($0, try $0.collect()) }
-        let total = collected.reduce(0) { $0 + $1.1.count }
-        progress?(BackupProgress(filesDone: 0, filesTotal: total, bytesUploaded: 0))
-
-        for (provider, files) in collected {
-            var items: [SnapshotItem] = []
-            for file in files {
-                let data = try file.read()
-                let id = vault.blobID(for: data)
-                if !stored.contains(id) {
-                    let sealed = try vault.seal(data)
-                    try await store.putBlob(id, sealed)
-                    stored.insert(id)
-                    newBlobs += 1
-                    uploaded += sealed.count
+        var items = [SnapshotItem?](repeating: nil, count: files.count)
+        try await withThrowingTaskGroup(of: (Int, SnapshotItem).self) { group in
+            var next = 0
+            func enqueue() {
+                let index = next
+                let file = files[index].1
+                next += 1
+                group.addTask { [store, vault] in
+                    let data = try file.read()
+                    let id = vault.blobID(for: data)
+                    var uploaded = 0
+                    // Identical content is uploaded once, even when two files hash the same concurrently.
+                    if await tracker.claim(id) {
+                        let sealed = try vault.seal(data)
+                        try await store.putBlob(id, sealed)
+                        uploaded = sealed.count
+                    }
+                    progress?(await tracker.finished(uploadedBytes: uploaded))
+                    return (index, SnapshotItem(kind: file.kind, path: file.path, project: file.project,
+                                                blob: id, size: data.count, modifiedAt: file.modifiedAt))
                 }
-                items.append(SnapshotItem(kind: file.kind, path: file.path, project: file.project,
-                                          blob: id, size: data.count, modifiedAt: file.modifiedAt))
-                progress?(BackupProgress(filesDone: fileCount + items.count, filesTotal: total, bytesUploaded: uploaded))
             }
-            fileCount += items.count
-            agents.append(AgentSnapshot(agentID: provider.id, items: items))
+            for _ in 0..<min(max(1, concurrency), files.count) { enqueue() }
+            while let (index, item) = try await group.next() {
+                items[index] = item
+                if next < files.count { enqueue() }
+            }
+        }
+
+        var agents: [AgentSnapshot] = []
+        var offset = 0
+        for (agent, agentFiles) in collected {
+            agents.append(AgentSnapshot(agentID: agent, items: items[offset..<offset + agentFiles.count].compactMap { $0 }))
+            offset += agentFiles.count
         }
 
         // The manifest goes last, so an interrupted backup never leaves a snapshot pointing at missing blobs.
         let manifest = Manifest(id: Self.snapshotID(date: now, hostname: source.hostname), createdAt: now, source: source, agents: agents)
         try await store.putSnapshot(manifest.id, try vault.seal(ManifestCoding.encode(manifest)))
-        return BackupResult(manifest: manifest, fileCount: fileCount, newBlobCount: newBlobs, uploadedBytes: uploaded)
+        let totals = await tracker.progress
+        return BackupResult(manifest: manifest, fileCount: files.count, newBlobCount: await tracker.newBlobs, uploadedBytes: totals.bytesUploaded)
     }
 
     /// Reads the time and device out of a snapshot ID — no decryption needed, so the UI can
