@@ -52,6 +52,19 @@ func googleAuth() throws -> GoogleOAuth {
     return GoogleOAuth(client: try JSONDecoder().decode(GoogleClientConfig.self, from: data), secrets: secrets)
 }
 
+/// Refuses to write into the live home while an affected agent is running (it would overwrite the result).
+func ensureAgentsStopped(_ agentIDs: [String], home: URL, force: Bool) throws {
+    guard home.standardizedFileURL.path == URL(fileURLWithPath: NSHomeDirectory()).standardizedFileURL.path else { return }
+    let running = RunningAgents.find().filter { agentIDs.contains($0.key) }
+    guard !running.isEmpty else { return }
+    let list = running.map { "\($0.key) (pid \($0.value.map(String.init).joined(separator: ", ")))" }.sorted().joined(separator: "; ")
+    if force {
+        print("Warning: still running: \(list). Continuing because of --force.")
+    } else {
+        throw ValidationError("Quit these first — they rewrite their config while running: \(list). Use --force to continue anyway.")
+    }
+}
+
 func readPassphrase(_ prompt: String) throws -> String {
     if let env = ProcessInfo.processInfo.environment["AGENT_BACKUP_PASSPHRASE"], !env.isEmpty { return env }
     var buffer = [CChar](repeating: 0, count: 1024)
@@ -93,7 +106,8 @@ struct Detect: ParsableCommand {
                 continue
             }
             let s = try provider.summary()
-            print("\(s.displayName): \(s.sessionCount) sessions in \(s.projectCount) projects, \(formatBytes(s.totalBytes))")
+            let running = RunningAgents.find()[provider.id].map { " — running (pid \($0.map(String.init).joined(separator: ", ")))" } ?? ""
+            print("\(s.displayName): \(s.sessionCount) sessions in \(s.projectCount) projects, \(formatBytes(s.totalBytes))\(running)")
             for server in s.mcpServers {
                 print("  MCP \(server.name) [\(server.transport.rawValue)] \(server.project ?? "(user)") → \(server.target)")
             }
@@ -162,6 +176,8 @@ struct Restore: AsyncParsableCommand {
     var verbose = false
     @Flag(help: "Actually write the files.")
     var apply = false
+    @Flag(help: "Apply even if an affected agent is running.")
+    var force = false
 
     func run() async throws {
         guard let policy = ConflictPolicy(rawValue: onConflict) else {
@@ -201,6 +217,7 @@ struct Restore: AsyncParsableCommand {
             print("\nDry run — nothing written. Re-run with --apply to restore.")
             return
         }
+        try ensureAgentsStopped(plans.filter { $0.writes.contains(where: \.writes) }.map(\.agentID), home: targetHome, force: force)
         let result = try BackupEngine.apply(plans, home: targetHome)
         print("\nWrote \(result.written) files.")
         if result.rollbackDir != nil { print("To undo this restore: agent-backup rollback --apply") }
@@ -222,6 +239,8 @@ struct Rollback: ParsableCommand {
     @OptionGroup var home: HomeOption
     @Flag(help: "Actually undo.")
     var apply = false
+    @Flag(help: "Undo even if Claude Code is running.")
+    var force = false
 
     func run() throws {
         let points = RollbackPoint.list(home: home.url)
@@ -245,6 +264,7 @@ struct Rollback: ParsableCommand {
             print("\nDry run — nothing changed. Re-run with --apply to undo.")
             return
         }
+        try ensureAgentsStopped(["claude-code"], home: home.url, force: force)
         let result = try point.undo(home: home.url)
         print("\nUndone: put back \(result.restored), deleted \(result.deleted).")
     }

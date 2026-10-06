@@ -32,7 +32,10 @@ struct AgentDetailView: View {
             AgentIcon(agent: agent, size: 52)
             VStack(alignment: .leading, spacing: 4) {
                 Text(agent.name).font(.largeTitle.weight(.semibold))
-                SupportBadge(agent: agent)
+                HStack(spacing: 4) {
+                    SupportBadge(agent: agent)
+                    if agent.isRunning { RunningBadge() }
+                }
             }
         }
     }

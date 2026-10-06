@@ -23,6 +23,10 @@ public struct AgentInfo: Identifiable {
     public var sessionCount: Int?
     public var projectCount: Int?
     public var mcpServers: [MCPServerInfo]
+    /// PIDs of this agent's processes running right now.
+    public var runningPIDs: [Int32] = []
+
+    public var isRunning: Bool { !runningPIDs.isEmpty }
 }
 
 public enum AgentCatalog {
@@ -55,7 +59,12 @@ public enum AgentCatalog {
 
     /// Walks the disk; call off the main thread. Installed agents come first.
     public static func scan(home: URL) -> [AgentInfo] {
-        definitions.map { scan($0, home: home) }
+        let running = RunningAgents.find()
+        return definitions.map { def -> AgentInfo in
+            var info = scan(def, home: home)
+            info.runningPIDs = running[def.id] ?? []
+            return info
+        }
             .enumerated()
             .sorted { ($0.element.installed ? 0 : 1, $0.offset) < ($1.element.installed ? 0 : 1, $1.offset) }
             .map(\.element)

@@ -176,6 +176,21 @@ struct SupportBadge: View {
     }
 }
 
+struct RunningBadge: View {
+    var body: some View {
+        HStack(spacing: 3) {
+            Circle().fill(.green).frame(width: 6, height: 6)
+            Text("執行中")
+        }
+        .font(.caption2.weight(.semibold))
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .foregroundStyle(.green)
+        .background(.green.opacity(0.14), in: Capsule())
+        .help("正在執行。還原前請先關閉，否則它會覆寫還原的設定。")
+    }
+}
+
 struct SectionHeader: View {
     let title: String
     var trailing: String?

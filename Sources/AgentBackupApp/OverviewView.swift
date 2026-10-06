@@ -88,7 +88,10 @@ struct AgentCard: View {
                     AgentIcon(agent: agent)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(agent.name).font(.headline)
-                        SupportBadge(agent: agent)
+                        HStack(spacing: 4) {
+                            SupportBadge(agent: agent)
+                            if agent.isRunning { RunningBadge() }
+                        }
                     }
                     Spacer()
                 }
