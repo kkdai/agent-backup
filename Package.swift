@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "AgentBackupCore", targets: ["AgentBackupCore"]),
         .executable(name: "agent-backup", targets: ["agent-backup"]),
+        .executable(name: "AgentBackupApp", targets: ["AgentBackupApp"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
@@ -20,6 +21,7 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
+        .executableTarget(name: "AgentBackupApp", dependencies: ["AgentBackupCore"]),
         .testTarget(name: "AgentBackupCoreTests", dependencies: ["AgentBackupCore"]),
     ],
     swiftLanguageModes: [.v5]

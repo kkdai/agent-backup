@@ -7,6 +7,7 @@
 | 階段 | 內容 |
 |---|---|
 | **M0** · CLI 原型 | Claude Code provider、本機資料夾備份、還原 + 路徑重寫、MCP 逐項合併、session 只增不覆蓋、回滾副本（DESIGN §11） |
+| **M2** · App 第一版 | 啟動自動偵測 6 種 agent、大小（可備份 / 磁碟上）、MCP 列表、Google Drive 狀態與上次備份、立即備份 + 進度、passphrase 對話框（[UI.md](UI.md)） |
 | **M1** · 核心 | 端對端加密（passphrase 包裝 data key、AES-GCM、keyed blob ID）、Google Drive store（`drive.file`）、OAuth loopback + PKCE、設定精靈（DESIGN §12） |
 
 ## [M1 · 加密 + Google Drive](https://github.com/kkdai/agent-backup/milestone/1)
@@ -23,9 +24,9 @@
 
 原生 Mac App：偵測、備份、還原精靈、衝突處理、回滾。
 
-- [ ] [#6](https://github.com/kkdai/agent-backup/issues/6) App 外殼：SwiftUI 主視窗 + Xcode 專案 `app`
+- [x] [#6](https://github.com/kkdai/agent-backup/issues/6) App 外殼：SwiftUI 主視窗 + Xcode 專案 `app`
 - [ ] [#7](https://github.com/kkdai/agent-backup/issues/7) 首次啟動流程：Google 登入 + 設定 passphrase `app` `drive`
-- [ ] [#8](https://github.com/kkdai/agent-backup/issues/8) 偵測畫面 + 選擇要備份的項目 `app`
+- [x] [#8](https://github.com/kkdai/agent-backup/issues/8) 偵測畫面 + 選擇要備份的項目 `app`
 - [ ] [#9](https://github.com/kkdai/agent-backup/issues/9) 還原精靈：選快照 → 路徑對應 → 預覽 → 套用 `app`
 - [ ] [#10](https://github.com/kkdai/agent-backup/issues/10) 還原前偵測正在執行的 Claude Code `app` `provider`
 - [ ] [#11](https://github.com/kkdai/agent-backup/issues/11) 一鍵回滾 `app` `core`

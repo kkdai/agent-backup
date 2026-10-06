@@ -49,11 +49,12 @@ public struct AgentSummary {
     public var projectCount: Int
     public var sessionCount: Int
     public var totalBytes: Int
+    public var bytesByKind: [ItemKind: Int]
     public var mcpServers: [MCPServerInfo]
 }
 
 /// Agent-neutral view of an MCP server. The basis for cross-agent MCP copying (M3).
-public struct MCPServerInfo: Equatable {
+public struct MCPServerInfo: Equatable, Identifiable {
     public enum Transport: String {
         case stdio, http, sse, unknown
     }
@@ -64,6 +65,8 @@ public struct MCPServerInfo: Equatable {
     public var transport: Transport
     /// Command line for stdio, URL for http/sse. Never includes env or header values.
     public var target: String
+
+    public var id: String { "\(project ?? "")\u{0}\(name)" }
 
     init(name: String, project: String?, config: [String: Any]) {
         self.name = name

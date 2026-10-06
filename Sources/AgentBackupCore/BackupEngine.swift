@@ -7,6 +7,12 @@ public struct BackupResult {
     public var uploadedBytes: Int
 }
 
+public struct BackupProgress {
+    public var filesDone: Int
+    public var filesTotal: Int
+    public var bytesUploaded: Int
+}
+
 public struct ApplyResult {
     public var written: Int
     public var rollbackDir: URL?
@@ -55,14 +61,21 @@ public struct BackupEngine {
 
     // MARK: - Backup
 
-    public func backup(providers: [AgentProvider], source: SourceInfo, now: Date = Date()) async throws -> BackupResult {
+    public func backup(
+        providers: [AgentProvider], source: SourceInfo, now: Date = Date(),
+        progress: ((BackupProgress) -> Void)? = nil
+    ) async throws -> BackupResult {
         var agents: [AgentSnapshot] = []
         var fileCount = 0, newBlobs = 0, uploaded = 0
         var stored = try await store.blobIDs()
 
-        for provider in providers where provider.isInstalled() {
+        let collected = try providers.filter { $0.isInstalled() }.map { ($0, try $0.collect()) }
+        let total = collected.reduce(0) { $0 + $1.1.count }
+        progress?(BackupProgress(filesDone: 0, filesTotal: total, bytesUploaded: 0))
+
+        for (provider, files) in collected {
             var items: [SnapshotItem] = []
-            for file in try provider.collect() {
+            for file in files {
                 let data = try file.read()
                 let id = vault.blobID(for: data)
                 if !stored.contains(id) {
@@ -74,6 +87,7 @@ public struct BackupEngine {
                 }
                 items.append(SnapshotItem(kind: file.kind, path: file.path, project: file.project,
                                           blob: id, size: data.count, modifiedAt: file.modifiedAt))
+                progress?(BackupProgress(filesDone: fileCount + items.count, filesTotal: total, bytesUploaded: uploaded))
             }
             fileCount += items.count
             agents.append(AgentSnapshot(agentID: provider.id, items: items))
@@ -83,6 +97,19 @@ public struct BackupEngine {
         let manifest = Manifest(id: Self.snapshotID(date: now, hostname: source.hostname), createdAt: now, source: source, agents: agents)
         try await store.putSnapshot(manifest.id, try vault.seal(ManifestCoding.encode(manifest)))
         return BackupResult(manifest: manifest, fileCount: fileCount, newBlobCount: newBlobs, uploadedBytes: uploaded)
+    }
+
+    /// Reads the time and device out of a snapshot ID — no decryption needed, so the UI can
+    /// show "last backup" before the user unlocks anything.
+    public static func parseSnapshotID(_ id: String) -> (date: Date, hostname: String)? {
+        let parts = id.split(separator: "-", maxSplits: 2).map(String.init)
+        guard parts.count == 3 else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        guard let date = formatter.date(from: "\(parts[0])-\(parts[1])") else { return nil }
+        return (date, parts[2].replacingOccurrences(of: "-", with: " "))
     }
 
     static func snapshotID(date: Date, hostname: String) -> String {

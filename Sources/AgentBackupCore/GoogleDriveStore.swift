@@ -91,6 +91,27 @@ public final class GoogleDriveStore: BackupStore {
         return try await download(fileID)
     }
 
+    public struct Account {
+        public var email: String?
+        public var displayName: String?
+        public var usedBytes: Int64?
+        public var limitBytes: Int64?
+    }
+
+    /// The signed-in Google account and storage quota.
+    public func account() async throws -> Account {
+        var components = URLComponents(string: "https://www.googleapis.com/drive/v3/about")!
+        components.queryItems = [.init(name: "fields", value: "user(displayName,emailAddress),storageQuota(usage,limit)")]
+        let json = try await send(URLRequest(url: components.url!))
+        let user = json["user"] as? [String: Any]
+        let quota = json["storageQuota"] as? [String: Any]
+        return Account(
+            email: user?["emailAddress"] as? String, displayName: user?["displayName"] as? String,
+            usedBytes: (quota?["usage"] as? String).flatMap { Int64($0) },
+            limitBytes: (quota?["limit"] as? String).flatMap { Int64($0) }
+        )
+    }
+
     // MARK: - Folders & indexes
 
     private func folders() async throws -> (root: String, blobs: String, snapshots: String) {

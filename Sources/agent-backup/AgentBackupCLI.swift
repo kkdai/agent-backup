@@ -37,7 +37,7 @@ func formatBytes(_ bytes: Int) -> String {
 }
 
 let secrets: SecretStore = KeychainStore()
-let cachesKeys = ProcessInfo.processInfo.environment["AGENT_BACKUP_NO_KEYCHAIN"] != "1"
+let keys = KeyManager(secrets: secrets, cachesKeys: ProcessInfo.processInfo.environment["AGENT_BACKUP_NO_KEYCHAIN"] != "1")
 
 func openStore(_ location: String) throws -> BackupStore {
     guard location == "gdrive" else { return LocalFolderStore(folder: expand(location)) }
@@ -64,11 +64,8 @@ func readPassphrase(_ prompt: String) throws -> String {
 /// Unlocks the location's key: Keychain cache first, then the passphrase. Creates a new key when allowed.
 func openVault(_ store: BackupStore, createIfMissing: Bool) async throws -> Vault {
     if let keyfile = try await BackupEngine.keyfile(in: store) {
-        let account = "vault-\(keyfile.fingerprint)"
-        if cachesKeys, let raw = secrets.get(account) { return Vault(rawKey: raw) }
-        let vault = try Vault.unlock(keyfile, passphrase: try readPassphrase("Passphrase for \(store.displayName): "))
-        if cachesKeys { try? secrets.set(account, vault.rawKey) }
-        return vault
+        if let vault = keys.cachedVault(for: keyfile) { return vault }
+        return try keys.unlock(keyfile, passphrase: try readPassphrase("Passphrase for \(store.displayName): "))
     }
     guard createIfMissing else { throw BackupError.notInitialized }
 
@@ -80,9 +77,7 @@ func openVault(_ store: BackupStore, createIfMissing: Bool) async throws -> Vaul
        try readPassphrase("Repeat passphrase: ") != passphrase {
         throw ValidationError("Passphrases don't match.")
     }
-    let (vault, keyfile) = try await BackupEngine.initialize(store, passphrase: passphrase)
-    if cachesKeys { try? secrets.set("vault-\(keyfile.fingerprint)", vault.rawKey) }
-    return vault
+    return try await keys.create(in: store, passphrase: passphrase)
 }
 
 // MARK: - Commands
@@ -225,7 +220,7 @@ struct Lock: AsyncParsableCommand {
         guard let keyfile = try await BackupEngine.keyfile(in: try openStore(location)) else {
             throw BackupError.notInitialized
         }
-        secrets.delete("vault-\(keyfile.fingerprint)")
+        keys.forget(keyfile)
         print("Locked. The passphrase will be asked next time.")
     }
 }

@@ -157,17 +157,19 @@ public struct ClaudeCodeProvider: AgentProvider {
                 }
             }
         }
-        let bytes = files.reduce(0) { total, file in
-            if case .file(let url) = file.source {
-                return total + ((try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0)
+        var bytesByKind: [ItemKind: Int] = [:]
+        for file in files {
+            let size = switch file.source {
+            case .file(let url): (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+            case .data(let data): data.count
             }
-            return total
+            bytesByKind[file.kind, default: 0] += size
         }
         return AgentSummary(
             agentID: id, displayName: displayName,
             projectCount: Set(files.compactMap(\.project)).count,
             sessionCount: files.filter { $0.kind == .session }.count,
-            totalBytes: bytes, mcpServers: servers
+            totalBytes: bytesByKind.values.reduce(0, +), bytesByKind: bytesByKind, mcpServers: servers
         )
     }
 
