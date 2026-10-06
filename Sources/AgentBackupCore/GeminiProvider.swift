@@ -107,6 +107,7 @@ public struct GeminiProvider: AgentProvider {
             switch item.path {
             case ".gemini/settings.json":
                 plan.writes.append(try planSettingsMerge(data, target: target, policy: context.policy, notes: &plan.notes))
+
             case ".gemini/projects.json":
                 plan.writes.append(try planJSONMerge(target: target, kind: .settings, detail: "merged project list") { local in
                     var root = local ?? [:]
@@ -134,22 +135,6 @@ public struct GeminiProvider: AgentProvider {
         plan.notes.append(.quitBeforeApplying(agent: displayName))
         plan.notes.append(.logInAfterRestore(agent: displayName, command: "gemini"))
         return plan
-    }
-
-    /// Keeps this Mac's preferences; adds settings it lacks; merges MCP servers one by one.
-    func planSettingsMerge(_ data: Data, target: URL, policy: ConflictPolicy, notes: inout [RestoreNote]) throws -> PlannedWrite {
-        let incoming = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
-        var conflicts: [RestoreNote] = []
-        let write = try planJSONMerge(target: target, kind: .settings, detail: "merged settings and MCP servers") { local in
-            var root = (local ?? [:]).merging(incoming) { local, _ in local }
-            if let servers = incoming["mcpServers"] as? [String: Any] {
-                root["mcpServers"] = mergeMCPServers(servers, into: local?["mcpServers"] as? [String: Any] ?? [:],
-                                                     scope: nil, policy: policy, conflicts: &conflicts)
-            }
-            return root
-        }
-        notes += conflicts
-        return write
     }
 
     /// `logs.json` is an array of prompt entries; union them, ordered by timestamp.

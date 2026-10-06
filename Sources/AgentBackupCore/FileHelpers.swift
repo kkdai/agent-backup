@@ -127,3 +127,20 @@ func planJSONMerge(target: URL, kind: ItemKind, detail: String, merge: ([String:
     let action: PlannedWrite.Action = local == nil ? .create : jsonEqual(local!, merged) ? .unchanged : .update
     return PlannedWrite(target: target, data: data, kind: kind, action: action, detail: detail, modifiedAt: nil)
 }
+
+/// For JSON settings files with an `mcpServers` object: keeps this Mac's values, adds keys it
+/// lacks, and merges MCP servers one by one (conflicts per `policy`).
+func planSettingsMerge(_ data: Data, target: URL, policy: ConflictPolicy, notes: inout [RestoreNote]) throws -> PlannedWrite {
+    let incoming = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+    var conflicts: [RestoreNote] = []
+    let write = try planJSONMerge(target: target, kind: .settings, detail: "merged settings and MCP servers") { local in
+        var root = (local ?? [:]).merging(incoming) { local, _ in local }
+        if let servers = incoming["mcpServers"] as? [String: Any] {
+            root["mcpServers"] = mergeMCPServers(servers, into: local?["mcpServers"] as? [String: Any] ?? [:],
+                                                 scope: nil, policy: policy, conflicts: &conflicts)
+        }
+        return root
+    }
+    notes += conflicts
+    return write
+}
