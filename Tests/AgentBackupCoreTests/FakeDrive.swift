@@ -10,6 +10,7 @@ final class FakeDrive: HTTPTransport {
         var parent: String
         var mimeType: String
         var data: Data
+        var created = Date()
     }
 
     var files: [String: File] = [:]
@@ -51,6 +52,9 @@ final class FakeDrive: HTTPTransport {
             guard files[url.lastPathComponent] != nil else { return respond(404, json: [:]) }
             files[url.lastPathComponent]!.data = request.httpBody ?? Data()
             return respond(200, json: ["id": url.lastPathComponent])
+        case ("DELETE", let path) where path.hasPrefix("/drive/v3/files/"):
+            guard files.removeValue(forKey: url.lastPathComponent) != nil else { return respond(404, json: [:]) }
+            return (Data(), HTTPURLResponse(url: url, statusCode: 204, httpVersion: nil, headerFields: nil)!)
         case ("GET", let path) where path.hasPrefix("/drive/v3/files/") && query["alt"] == "media":
             guard let file = files[url.lastPathComponent] else { return respond(404, json: [:]) }
             return (file.data, HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
@@ -87,7 +91,11 @@ final class FakeDrive: HTTPTransport {
             .sorted { Int($0.id.dropFirst())! < Int($1.id.dropFirst())! }
         let start = Int(pageToken ?? "0")!
         let page = matches.dropFirst(start).prefix(2)
-        var json: [String: Any] = ["files": page.map { ["id": $0.id, "name": $0.name] }]
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var json: [String: Any] = ["files": page.map {
+            ["id": $0.id, "name": $0.name, "createdTime": iso.string(from: $0.created), "size": String($0.data.count)]
+        }]
         if start + 2 < matches.count { json["nextPageToken"] = String(start + 2) }
         return respond(200, json: json)
     }

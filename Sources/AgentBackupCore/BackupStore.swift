@@ -20,12 +20,28 @@ public protocol BackupStore {
     func replaceKeyfile(_ data: Data) async throws
 
     func blobIDs() async throws -> Set<String>
+    /// Every blob with its upload time and stored size (for pruning).
+    func blobInfo() async throws -> [BlobInfo]
     func putBlob(_ id: String, _ data: Data) async throws
     func blob(_ id: String) async throws -> Data
+    func deleteBlob(_ id: String) async throws
 
     func snapshotIDs() async throws -> [String]
     func putSnapshot(_ id: String, _ data: Data) async throws
     func snapshot(_ id: String) async throws -> Data
+    func deleteSnapshot(_ id: String) async throws
+}
+
+public struct BlobInfo: Equatable {
+    public var id: String
+    public var created: Date
+    public var size: Int
+
+    public init(id: String, created: Date, size: Int) {
+        self.id = id
+        self.created = created
+        self.size = size
+    }
 }
 
 public enum BackupError: LocalizedError, Equatable {
@@ -90,6 +106,18 @@ public final class LocalFolderStore: BackupStore {
         return Set(prefixes.flatMap { (try? fm.contentsOfDirectory(atPath: blobsDir.appendingPathComponent($0).path)) ?? [] })
     }
 
+    public func blobInfo() async throws -> [BlobInfo] {
+        try await blobIDs().map { id in
+            let attributes = try fm.attributesOfItem(atPath: blobURL(id).path)
+            return BlobInfo(id: id, created: attributes[.modificationDate] as? Date ?? .distantPast,
+                            size: attributes[.size] as? Int ?? 0)
+        }
+    }
+
+    public func deleteBlob(_ id: String) async throws {
+        try fm.removeItem(at: blobURL(id))
+    }
+
     public func putBlob(_ id: String, _ data: Data) async throws {
         try write(data, to: blobURL(id))
     }
@@ -110,6 +138,10 @@ public final class LocalFolderStore: BackupStore {
         let url = snapshotsDir.appendingPathComponent(id)
         guard fm.fileExists(atPath: url.path) else { throw BackupError.snapshotNotFound(id) }
         return try Data(contentsOf: url)
+    }
+
+    public func deleteSnapshot(_ id: String) async throws {
+        try fm.removeItem(at: snapshotsDir.appendingPathComponent(id))
     }
 }
 
