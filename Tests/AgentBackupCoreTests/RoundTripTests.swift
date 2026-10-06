@@ -128,7 +128,7 @@ struct RoundTripTests {
 
         // The overwritten ~/.claude.json was saved for rollback.
         let rollback = try #require(result.rollbackDir)
-        #expect(FileManager.default.fileExists(atPath: rollback.appendingPathComponent(".claude.json").path))
+        #expect(FileManager.default.fileExists(atPath: rollback.appendingPathComponent("files/.claude.json").path))
     }
 
     @Test func renamePolicyKeepsBoth() async throws {
