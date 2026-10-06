@@ -1,9 +1,9 @@
 import Foundation
 
-/// One backup snapshot. Stored as `AgentBackup/snapshots/<id>.json`;
+/// One backup snapshot. Stored encrypted as `AgentBackup/snapshots/<id>`;
 /// file contents live in content-addressed blobs so unchanged files are never re-uploaded.
 public struct Manifest: Codable, Equatable {
-    public static let currentFormatVersion = 1
+    public static let currentFormatVersion = 2
 
     public var formatVersion: Int
     public var id: String
@@ -50,7 +50,7 @@ public struct SnapshotItem: Codable, Equatable {
     /// Relative to the home directory, or to the project's session directory when `project` is set.
     public var path: String
     public var project: ProjectRef?
-    /// SHA-256 of the plaintext content.
+    /// Keyed HMAC-SHA256 of the plaintext content (see `Vault.blobID`).
     public var blob: String
     public var size: Int
     public var modifiedAt: Date?

@@ -49,8 +49,10 @@ struct RoundTripTests {
         try write("cache", ".claude/cache/junk", in: oldHome)
     }
 
+    let vault = Vault(rawKey: Data(repeating: 7, count: 32))
+
     func backupAndPlan(policy: ConflictPolicy = .keep) async throws -> (BackupEngine, Manifest, [RestorePlan]) {
-        let engine = BackupEngine(store: LocalFolderStore(folder: storeDir))
+        let engine = BackupEngine(store: LocalFolderStore(folder: storeDir), vault: vault)
         let result = try await engine.backup(
             providers: Providers.all(home: oldHome),
             source: SourceInfo(hostname: "Old Mac", userName: "evanlin", home: oldHome.path)
@@ -72,7 +74,7 @@ struct RoundTripTests {
 
         // The ~/.claude.json extract keeps MCP + allowed tools, never login or machine stats.
         let extract = try #require(items.first { $0.kind == .mcpConfig })
-        let data = try BlobCodec().decode(try Data(contentsOf: storeDir.appendingPathComponent("AgentBackup/blobs/\(extract.blob.prefix(2))/\(extract.blob)")), expectedID: extract.blob)
+        let data = try vault.open(try await LocalFolderStore(folder: storeDir).blob(extract.blob), expectedID: extract.blob)
         let text = String(decoding: data, as: UTF8.self)
         #expect(!text.contains("oauthAccount") && !text.contains("lastCost") && !text.contains("numStartups"))
         #expect(text.contains("allowedTools"))
@@ -155,13 +157,25 @@ struct RoundTripTests {
         #expect(again[0].writes.allSatisfy { !$0.writes })
     }
 
+    @Test func nothingIsStoredInPlaintext() async throws {
+        try seedOldHome()
+        _ = try await backupAndPlan()
+        let store = storeDir.appendingPathComponent("AgentBackup")
+        for file in FileManager.default.enumerator(atPath: store.path)!.compactMap({ $0 as? String }) where !file.hasSuffix("keyfile.json") {
+            guard let data = FileManager.default.contents(atPath: store.appendingPathComponent(file).path) else { continue }
+            let text = String(decoding: data, as: UTF8.self)
+            #expect(!text.contains("evanlin") && !text.contains("mcpServers") && !text.contains("remember this"), "\(file)")
+        }
+    }
+
     @Test func secondBackupUploadsNothingNew() async throws {
         try seedOldHome()
-        let engine = BackupEngine(store: LocalFolderStore(folder: storeDir))
+        let engine = BackupEngine(store: LocalFolderStore(folder: storeDir), vault: vault)
         let source = SourceInfo(hostname: "Old Mac", userName: "evanlin", home: oldHome.path)
         _ = try await engine.backup(providers: Providers.all(home: oldHome), source: source, now: Date(timeIntervalSince1970: 0))
         let second = try await engine.backup(providers: Providers.all(home: oldHome), source: source, now: Date(timeIntervalSince1970: 60))
         #expect(second.newBlobCount == 0)
-        #expect(try await engine.store.manifests().count == 2)
+        #expect(try await engine.manifests().count == 2)
+        #expect(try await engine.manifest(id: nil).createdAt == Date(timeIntervalSince1970: 60))
     }
 }

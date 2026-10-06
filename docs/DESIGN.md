@@ -146,7 +146,7 @@ AgentBackup/                       ← 使用者看得到的資料夾（已決�
 | 階段 | 內容 |
 |---|---|
 | **M0** ✅ | Swift Package + CLI；Claude Code provider；備份到**本機資料夾**；還原 + 路徑重寫（見 §11） |
-| **M1** | 加密；Google Drive backend；增量 blob |
+| **M1** ✅ | 加密；Google Drive backend；增量 blob（見 §12） |
 | **M2** | SwiftUI App（偵測、勾選、還原預覽、衝突處理） |
 | **M3** | Codex、Gemini、Copilot、Claude Desktop providers；**跨 agent MCP 複製** |
 | **M4** | 排程備份、menu bar、保留策略、簽章與 notarization |
@@ -195,7 +195,34 @@ AgentBackup/                       ← 使用者看得到的資料夾（已決�
 **實測（本機資料）**：31 個檔案 16 MB → 壓縮後 5 MB；第二次備份 0 個新 blob；還原到不同使用者名稱 + `~/Documents→~/Code` 後，沒有殘留舊路徑。
 
 **已知限制 / 下一步**
-- blob 尚未加密（M1）
 - 很長的專案路徑 Claude Code 會截斷並加 hash，目前沒處理
 - 還原必須先關閉 Claude Code（它執行時會覆寫 `~/.claude.json`）；App 版要自動偵測
 - 回滾目前要手動（把 rollback 資料夾複製回去、刪除 `created-files.txt` 列出的檔案）；App 版要一鍵回滾
+
+## 12. M1 實作紀錄（2026-10-06）
+
+**加密**（`Vault.swift`）
+- 隨機 256-bit data key；`keyfile.json` 存的是用 passphrase 衍生金鑰（PBKDF2-HMAC-SHA256，600k 次）包起來的 data key → 之後換 passphrase 不用重新加密整個備份
+- 每個 blob 與快照清單：先 lzfse 壓縮，再 AES-256-GCM 加密（HKDF 衍生出加密用與 ID 用兩把子金鑰）
+- Blob ID = HMAC-SHA256(子金鑰, 明文)：仍可去重，但 Google 無法比對「是否包含某個已知檔案」
+- 解鎖後的 data key 快取在 Keychain（`AgentBackup` / `vault-<keyfile 指紋>`，ThisDeviceOnly）
+- 快照格式升到 v2；M0 的未加密快照不再支援
+
+**Google Drive**（`GoogleOAuth.swift`、`GoogleDriveStore.swift`）
+- OAuth：系統瀏覽器 + `127.0.0.1` loopback redirect + PKCE + state；refresh token 存 Keychain
+- Scope `drive.file`：只看得到 App 自己建立的檔案；同一個 OAuth client 在不同 Mac 上看得到同一份備份
+- `My Drive/AgentBackup/{keyfile.json, blobs/, snapshots/}`；開始時一次列出 blob 清單（分頁），之後只上傳缺少的
+- ≤5 MB 用 multipart 上傳，更大用 resumable session
+- 429 / 5xx / rateLimitExceeded：指數退避重試 5 次；401：刷新 token 重試一次
+- `invalid_grant`（被撤銷，或 App 停在 Testing 狀態 7 天到期）→ 清除登入，提示重新 `drive login`
+- 拒絕覆蓋已存在的 `keyfile.json`（覆蓋會讓舊快照全部無法解密）
+
+**測試**：28 個（含假 Drive 的分頁、resumable、重試、401；用真實 loopback socket 跑完整 OAuth + PKCE 流程；端對端「舊 Mac 備份 → 新 Mac 只靠 passphrase 還原」）。
+
+**還沒做**
+- 用真的 Google 帳號實測（需要先跑 `scripts/setup-google-drive.sh`）
+- 上傳是逐一進行；Codex 這種上百 MB 的資料要改成平行上傳 + 進度顯示
+- resumable 上傳中斷時是整個檔案重傳，還不會從中斷點續傳
+- 換 passphrase 的指令（`Vault.keyfile(passphrase:)` 已經有，CLI 還沒接）
+- 舊快照清理（保留策略 + 刪除沒被引用的 blob）
+- 正式 App 要內建 OAuth client，使用者就不用自己建 Google Cloud 專案

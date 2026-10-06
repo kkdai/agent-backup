@@ -14,10 +14,43 @@ public struct ApplyResult {
 
 public struct BackupEngine {
     public let store: BackupStore
-    let codec = BlobCodec()
+    public let vault: Vault
 
-    public init(store: BackupStore) {
+    public init(store: BackupStore, vault: Vault) {
         self.store = store
+        self.vault = vault
+    }
+
+    // MARK: - Keys
+
+    /// The location's keyfile, or nil if nothing has been backed up there yet.
+    public static func keyfile(in store: BackupStore) async throws -> Keyfile? {
+        try await store.keyfile().map(Keyfile.decode)
+    }
+
+    /// Creates the keyfile for a new backup location.
+    public static func initialize(_ store: BackupStore, passphrase: String, iterations: Int = Vault.defaultIterations) async throws -> (Vault, Keyfile) {
+        let (vault, keyfile) = try Vault.create(passphrase: passphrase, iterations: iterations)
+        try await store.putKeyfile(try keyfile.encoded())
+        return (vault, keyfile)
+    }
+
+    // MARK: - Snapshots
+
+    /// Newest first.
+    public func manifests() async throws -> [Manifest] {
+        var out: [Manifest] = []
+        for id in try await store.snapshotIDs().sorted(by: >) {
+            out.append(try await manifest(id: id))
+        }
+        return out
+    }
+
+    /// `nil` means the latest.
+    public func manifest(id: String?) async throws -> Manifest {
+        let latest = id == nil ? try await store.snapshotIDs().max() : nil
+        guard let id = id ?? latest else { throw BackupError.noSnapshots }
+        return try ManifestCoding.decode(vault.open(try await store.snapshot(id)))
     }
 
     // MARK: - Backup
@@ -25,20 +58,20 @@ public struct BackupEngine {
     public func backup(providers: [AgentProvider], source: SourceInfo, now: Date = Date()) async throws -> BackupResult {
         var agents: [AgentSnapshot] = []
         var fileCount = 0, newBlobs = 0, uploaded = 0
-        var uploadedThisRun = Set<String>()
+        var stored = try await store.blobIDs()
 
         for provider in providers where provider.isInstalled() {
             var items: [SnapshotItem] = []
             for file in try provider.collect() {
                 let data = try file.read()
-                let id = BlobCodec.id(for: data)
-                if !uploadedThisRun.contains(id), !(try await store.hasBlob(id)) {
-                    let encoded = try codec.encode(data)
-                    try await store.putBlob(id, encoded)
+                let id = vault.blobID(for: data)
+                if !stored.contains(id) {
+                    let sealed = try vault.seal(data)
+                    try await store.putBlob(id, sealed)
+                    stored.insert(id)
                     newBlobs += 1
-                    uploaded += encoded.count
+                    uploaded += sealed.count
                 }
-                uploadedThisRun.insert(id)
                 items.append(SnapshotItem(kind: file.kind, path: file.path, project: file.project,
                                           blob: id, size: data.count, modifiedAt: file.modifiedAt))
             }
@@ -48,7 +81,7 @@ public struct BackupEngine {
 
         // The manifest goes last, so an interrupted backup never leaves a snapshot pointing at missing blobs.
         let manifest = Manifest(id: Self.snapshotID(date: now, hostname: source.hostname), createdAt: now, source: source, agents: agents)
-        try await store.putManifest(manifest)
+        try await store.putSnapshot(manifest.id, try vault.seal(ManifestCoding.encode(manifest)))
         return BackupResult(manifest: manifest, fileCount: fileCount, newBlobCount: newBlobs, uploadedBytes: uploaded)
     }
 
@@ -71,7 +104,7 @@ public struct BackupEngine {
     ) async throws -> [RestorePlan] {
         let mapper = PathMapper(rules: extraRules + [PathMapper.Rule(from: manifest.source.home, to: targetHome.path)])
         let context = RestoreContext(mapper: mapper, policy: policy) { item in
-            try codec.decode(try await store.blob(item.blob), expectedID: item.blob)
+            try vault.open(try await store.blob(item.blob), expectedID: item.blob)
         }
         var plans: [RestorePlan] = []
         for agent in manifest.agents where agentIDs?.contains(agent.agentID) ?? true {
