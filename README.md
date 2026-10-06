@@ -3,6 +3,7 @@
 一個 macOS App：把 coding agent（Claude Code、Codex、Gemini CLI、Copilot…）的 MCP 設定與聊天記錄加密備份到 Google Drive，並在另一台 Mac 上還原。
 
 - 設計文件：[docs/DESIGN.md](docs/DESIGN.md)
+- Roadmap：[docs/ROADMAP.md](docs/ROADMAP.md)（[GitHub Milestones](https://github.com/kkdai/agent-backup/milestones)）
 - 目前進度：**M1**（Claude Code、端對端加密、Google Drive 或本機資料夾、還原 + 路徑重寫）
 
 ## 連接 Google Drive（第一次）

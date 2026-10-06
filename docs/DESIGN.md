@@ -143,6 +143,8 @@ AgentBackup/                       ← 使用者看得到的資料夾（已決�
 
 ## 8. 分階段
 
+> 目前的待辦與進度見 [ROADMAP.md](ROADMAP.md) 與 GitHub Milestones。
+
 | 階段 | 內容 |
 |---|---|
 | **M0** ✅ | Swift Package + CLI；Claude Code provider；備份到**本機資料夾**；還原 + 路徑重寫（見 §11） |
