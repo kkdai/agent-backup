@@ -12,16 +12,26 @@ struct DriveView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             HStack(spacing: 14) {
-                Image(systemName: "icloud.fill")
+                Image(systemName: model.location == .gdrive ? "externaldrive.fill.badge.icloud" : "icloud.fill")
                     .font(.system(size: 26)).foregroundStyle(.white)
                     .frame(width: 52, height: 52)
                     .background(.blue.gradient, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Google Drive").font(.largeTitle.weight(.semibold))
-                    Text("備份存在 My Drive › AgentBackup，App 只能存取自己建立的檔案。")
+                    Text("備份位置").font(.largeTitle.weight(.semibold))
+                    Text(model.location == .gdrive
+                         ? "備份存在 My Drive › AgentBackup，App 只能存取自己建立的檔案。"
+                         : "備份存在 iCloud 雲碟 › AgentBackup，由 iCloud 同步到你的其他 Mac。")
                         .foregroundStyle(.secondary)
                 }
             }
+            Picker("", selection: Binding(get: { model.location }, set: { model.location = $0 })) {
+                ForEach(BackupLocation.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 320)
+            Text("兩種位置都用同樣的端對端加密；各自有自己的 passphrase。")
+                .font(.caption).foregroundStyle(.secondary)
             content
         }
         .padding(24)
@@ -111,8 +121,9 @@ struct DriveView: View {
     private func connected(_ status: AppModel.DriveStatus) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 14) {
-                StatCard(title: "帳號", symbol: "person.crop.circle",
-                         value: status.account.displayName ?? "已連線", detail: status.account.email ?? "", tint: .primary)
+                StatCard(title: status.location == .gdrive ? "帳號" : "位置", symbol: status.location == .gdrive ? "person.crop.circle" : "icloud",
+                         value: status.account.displayName ?? "已連線",
+                         detail: status.account.email ?? "iCloud 雲碟 › AgentBackup", tint: .primary)
                 StatCard(title: "備份", symbol: "clock.arrow.circlepath",
                          value: "\(status.snapshots.count) 份",
                          detail: status.snapshots.first.map { "最近：\(Format.dateTime($0.date))" } ?? "還沒有備份")
@@ -148,7 +159,9 @@ struct DriveView: View {
                     Label("已更換 passphrase", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                 }
                 Spacer()
-                Button("登出", role: .destructive) { Task { await model.logout() } }
+                if status.location == .gdrive {
+                    Button("登出", role: .destructive) { Task { await model.logout() } }
+                }
             }
             .sheet(isPresented: $changingPassphrase) {
                 ChangePassphraseSheet { passphraseChanged = true }.environment(model)
@@ -171,7 +184,7 @@ struct ScheduleCard: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("自動備份").font(.headline)
                         Text(model.schedule.map { "每天 \(String(format: "%02d:%02d", $0.hour, $0.minute)) 備份並清理舊備份；錯過的會在 Mac 喚醒後補做。" }
-                             ?? "每天固定時間自動備份到 Google Drive，不需要打開 App。")
+                             ?? "每天固定時間自動備份到 \(model.location.title)，不需要打開 App。")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -214,7 +227,7 @@ struct SnapshotsView: View {
         VStack(alignment: .leading, spacing: 12) {
             if let status = model.driveStatus {
                 if status.snapshots.isEmpty {
-                    Card { Text("Google Drive 上還沒有備份。到「總覽」按「立即備份」。").foregroundStyle(.secondary) }
+                    Card { Text("\(model.location.title) 上還沒有備份。到「總覽」按「立即備份」。").foregroundStyle(.secondary) }
                 } else {
                     Card(padding: 0) {
                         VStack(spacing: 0) {
@@ -228,9 +241,9 @@ struct SnapshotsView: View {
             } else {
                 Card {
                     HStack {
-                        Text("連線 Google Drive 後才能看到備份紀錄。").foregroundStyle(.secondary)
+                        Text("連線 \(model.location.title) 後才能看到備份紀錄。").foregroundStyle(.secondary)
                         Spacer()
-                        Button("前往 Google Drive") { model.route = .drive }
+                        Button("前往備份位置") { model.route = .drive }
                     }
                 }
             }
@@ -454,7 +467,7 @@ struct PassphraseSheet: View {
                 .font(.title2.weight(.semibold))
             Text(isNew
                  ? "所有備份都會用這組 passphrase 加密。在新電腦還原時需要它——忘記就無法還原，Google 和我們都救不回來。"
-                 : "這台 Mac 還沒有解鎖過 Google Drive 上的備份。輸入後會記在 Keychain，下次不用再輸入。")
+                 : "這台 Mac 還沒有解鎖過 \(model.location.title) 上的備份。輸入後會記在 Keychain，下次不用再輸入。")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             SecureField("Passphrase", text: $passphrase)

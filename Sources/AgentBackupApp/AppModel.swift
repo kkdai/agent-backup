@@ -35,6 +35,13 @@ enum PassphrasePrompt: Identifiable {
     }
 }
 
+enum BackupLocation: String, CaseIterable, Identifiable {
+    case gdrive, icloud
+    var id: String { rawValue }
+    var title: String { self == .gdrive ? "Google Drive" : "iCloud Drive" }
+    var symbol: String { self == .gdrive ? "externaldrive.connected.to.line.below" : "icloud" }
+}
+
 @MainActor @Observable
 final class AppModel {
     enum DriveState {
@@ -48,6 +55,7 @@ final class AppModel {
 
     struct DriveStatus {
         var account: GoogleDriveStore.Account
+        var location: BackupLocation
         /// Whether a passphrase/keyfile exists in the Drive folder.
         var initialized: Bool
         var snapshots: [SnapshotRef]
@@ -80,7 +88,16 @@ final class AppModel {
     var rollbackMessage: String?
 
     private var auth: GoogleOAuth?
-    private var store: GoogleDriveStore?
+    private var store: BackupStore?
+
+    var location: BackupLocation = BackupLocation(rawValue: UserDefaults.standard.string(forKey: "backupLocation") ?? "") ?? .gdrive {
+        didSet {
+            UserDefaults.standard.set(location.rawValue, forKey: "backupLocation")
+            store = nil
+            drive = .checking
+            Task { await refreshDrive() }
+        }
+    }
 
     init(home: URL = URL(fileURLWithPath: NSHomeDirectory()), secrets: SecretStore = KeychainStore()) {
         self.home = home
@@ -129,6 +146,10 @@ final class AppModel {
     }
 
     func refreshDrive() async {
+        if location == .icloud {
+            await refreshICloud()
+            return
+        }
         guard let data = try? Data(contentsOf: GoogleClientConfig.defaultLocation(home: home)),
               let client = try? JSONDecoder().decode(GoogleClientConfig.self, from: data) else {
             drive = .notConfigured
@@ -147,9 +168,25 @@ final class AppModel {
             let account = try await store.account()
             let initialized = try await BackupEngine.keyfile(in: store) != nil
             let snapshots = try await store.snapshotIDs().compactMap(SnapshotRef.init).sorted { $0.date > $1.date }
-            drive = .connected(DriveStatus(account: account, initialized: initialized, snapshots: snapshots))
+            drive = .connected(DriveStatus(account: account, location: .gdrive, initialized: initialized, snapshots: snapshots))
         } catch GoogleAuthError.notLoggedIn {
             drive = .loggedOut
+        } catch {
+            drive = .failed(error.localizedDescription)
+        }
+    }
+
+    private func refreshICloud() async {
+        guard let store = LocalFolderStore.iCloudDrive(home: home) else {
+            drive = .failed("這台 Mac 沒有開啟 iCloud Drive（系統設定 › Apple 帳號 › iCloud › iCloud 雲碟）。")
+            return
+        }
+        self.store = store
+        do {
+            let initialized = try await BackupEngine.keyfile(in: store) != nil
+            let snapshots = try await store.snapshotIDs().compactMap(SnapshotRef.init).sorted { $0.date > $1.date }
+            let account = GoogleDriveStore.Account(email: nil, displayName: "iCloud Drive", usedBytes: nil, limitBytes: nil)
+            drive = .connected(DriveStatus(account: account, location: .icloud, initialized: initialized, snapshots: snapshots))
         } catch {
             drive = .failed(error.localizedDescription)
         }
@@ -168,6 +205,8 @@ final class AppModel {
                     scheduleError = "自動備份需要從打包好的 App 啟用（scripts/build-app.sh）。"
                     return
                 }
+                var settings = settings
+                settings.location = location.rawValue
                 try BackupSchedule().enable(executable: cli, settings: settings)
             } else {
                 try BackupSchedule().disable()
@@ -258,7 +297,7 @@ final class AppModel {
 
     /// The unlocked key for the Drive backup: from Keychain if this Mac unlocked it before,
     /// otherwise by showing the passphrase sheet (create or unlock) and waiting for it.
-    func requestVault(allowCreate: Bool) async throws -> (GoogleDriveStore, Vault) {
+    func requestVault(allowCreate: Bool) async throws -> (BackupStore, Vault) {
         guard let store else { throw GoogleAuthError.notLoggedIn }
         let keyfile = try await BackupEngine.keyfile(in: store)
         if let keyfile, let vault = keys.cachedVault(for: keyfile) { return (store, vault) }
@@ -336,7 +375,7 @@ final class AppModel {
         }
     }
 
-    private func runBackup(store: GoogleDriveStore, vault: Vault) async {
+    private func runBackup(store: BackupStore, vault: Vault) async {
         backupState = .running(nil)
         let source = SourceInfo(
             hostname: Host.current().localizedName ?? ProcessInfo.processInfo.hostName,

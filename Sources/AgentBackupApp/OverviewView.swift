@@ -1,7 +1,7 @@
 import AgentBackupCore
 import SwiftUI
 
-/// The launch screen: what's on this Mac, how big it is, and whether it's safely in Google Drive.
+/// The launch screen: what's on this Mac, how big it is, and whether it's safely backed up.
 struct OverviewView: View {
     @Environment(AppModel.self) private var model
 
@@ -33,14 +33,14 @@ struct OverviewView: View {
 
     private var driveCard: some View {
         let (value, detail, tint): (String, String, Color) = switch model.drive {
-        case .checking: ("檢查中…", "正在連線 Google Drive", .secondary)
+        case .checking: ("檢查中…", "正在連線 \(model.location.title)", .secondary)
         case .notConfigured: ("未設定", "需要先設定 OAuth client", .orange)
         case .loggedOut: ("未登入", "登入後即可備份", .orange)
-        case .connected(let status): ("已連線", status.account.email ?? "Google Drive", .green)
+        case .connected(let status): ("已連線", status.account.email ?? status.location.title, .green)
         case .failed(let message): ("連線失敗", message, .red)
         }
         return Button { model.route = .drive } label: {
-            StatCard(title: "Google Drive", symbol: "icloud", value: value, detail: detail, tint: tint)
+            StatCard(title: model.location.title, symbol: model.location.symbol, value: value, detail: detail, tint: tint)
         }
         .buttonStyle(.plain)
     }
@@ -50,9 +50,9 @@ struct OverviewView: View {
             if let latest = model.latestSnapshot {
                 (Format.relative(latest.date), "\(latest.hostname) · 雲端共 \(model.driveStatus?.snapshots.count ?? 0) 份備份")
             } else if model.driveStatus != nil {
-                ("尚未備份", "Google Drive 上還沒有備份")
+                ("尚未備份", "\(model.location.title) 上還沒有備份")
             } else {
-                ("—", "連線 Google Drive 後顯示")
+                ("—", "連線 \(model.location.title) 後顯示")
             }
         return Button { model.route = .snapshots } label: {
             StatCard(title: "上次備份", symbol: "clock.arrow.circlepath", value: value, detail: detail,
@@ -158,12 +158,12 @@ struct BackupPanel: View {
 
     private var title: String {
         switch model.backupState {
-        case .running: "正在備份到 Google Drive…"
+        case .running: "正在備份到 \(model.location.title)…"
         case .finished: "備份完成"
         case .failed: "備份失敗"
         case .idle:
-            model.driveStatus == nil ? "連線 Google Drive 後就能備份"
-                : "備份 \(model.backupableAgents.map(\.name).joined(separator: "、")) 到 Google Drive"
+            model.driveStatus == nil ? "連線 \(model.location.title) 後就能備份"
+                : "備份 \(model.backupableAgents.map(\.name).joined(separator: "、")) 到 \(model.location.title)"
         }
     }
 
@@ -202,7 +202,7 @@ struct BackupPanel: View {
         case .failed(let message):
             Text(message).font(.callout).foregroundStyle(.red)
         case .idle:
-            Text("端對端加密：先在這台 Mac 上用你的 passphrase 加密，Google 只會收到密文。只上傳有變動的部分。")
+            Text("端對端加密：先在這台 Mac 上用你的 passphrase 加密，雲端只會收到密文。只上傳有變動的部分。")
                 .font(.callout).foregroundStyle(.secondary)
         }
     }

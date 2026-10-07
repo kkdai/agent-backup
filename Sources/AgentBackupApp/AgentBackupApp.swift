@@ -56,7 +56,7 @@ struct MenuBarContent: View {
         if let latest = model.latestSnapshot {
             Text("上次備份：\(Format.relative(latest.date))（\(latest.hostname)）")
         } else {
-            Text(model.driveStatus == nil ? "尚未連線 Google Drive" : "尚未備份")
+            Text(model.driveStatus == nil ? "尚未連線 \(model.location.title)" : "尚未備份")
         }
         if case .running(let progress) = model.backupState {
             Text(progress.map { "備份中… \($0.filesDone)/\($0.filesTotal)" } ?? "備份中…")
@@ -108,7 +108,7 @@ struct ContentView: View {
                     Label("MCP servers", systemImage: "point.3.connected.trianglepath.dotted").tag(Route.mcp)
                 }
                 Section("備份") {
-                    Label("Google Drive", systemImage: "icloud").tag(Route.drive)
+                    Label(model.location.title, systemImage: model.location.symbol).tag(Route.drive)
                     Label("備份紀錄", systemImage: "clock.arrow.circlepath").tag(Route.snapshots)
                 }
             }
@@ -125,7 +125,7 @@ struct ContentView: View {
                     Button { Task { await model.refresh() } } label: {
                         if model.isScanning { ProgressView().controlSize(.small) } else { Label("重新掃描", systemImage: "arrow.clockwise") }
                     }
-                    .help("重新偵測 agents 並檢查 Google Drive（⌘R）")
+                    .help("重新偵測 agents 並檢查備份位置（⌘R）")
                 }
             }
         }

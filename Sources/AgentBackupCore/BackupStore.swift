@@ -67,12 +67,26 @@ public enum BackupError: LocalizedError, Equatable {
 public final class LocalFolderStore: BackupStore {
     public let root: URL
     private let fm = FileManager.default
+    private let name: String?
 
-    public init(folder: URL) {
+    public init(folder: URL, displayName: String? = nil) {
         root = folder.appendingPathComponent("AgentBackup", isDirectory: true)
+        name = displayName
     }
 
-    public var displayName: String { root.path }
+    public var displayName: String { name ?? root.path }
+
+    /// `iCloud Drive/AgentBackup`. iCloud syncs the folder; macOS downloads evicted
+    /// (dataless) files transparently when they're read.
+    public static func iCloudDriveFolder(home: URL = URL(fileURLWithPath: NSHomeDirectory())) -> URL {
+        home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
+    }
+
+    public static func iCloudDrive(home: URL = URL(fileURLWithPath: NSHomeDirectory())) -> LocalFolderStore? {
+        let folder = iCloudDriveFolder(home: home)
+        guard FileManager.default.fileExists(atPath: folder.path) else { return nil }
+        return LocalFolderStore(folder: folder, displayName: "iCloud Drive › AgentBackup")
+    }
 
     private var keyfileURL: URL { root.appendingPathComponent("keyfile.json") }
     private var blobsDir: URL { root.appendingPathComponent("blobs", isDirectory: true) }

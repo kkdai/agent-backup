@@ -132,6 +132,13 @@ public actor GoogleDriveStore: BackupStore {
         public var displayName: String?
         public var usedBytes: Int64?
         public var limitBytes: Int64?
+
+        public init(email: String?, displayName: String?, usedBytes: Int64?, limitBytes: Int64?) {
+            self.email = email
+            self.displayName = displayName
+            self.usedBytes = usedBytes
+            self.limitBytes = limitBytes
+        }
     }
 
     /// The signed-in Google account and storage quota.
