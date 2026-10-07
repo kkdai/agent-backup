@@ -9,7 +9,7 @@ struct AgentBackupCLI: AsyncParsableCommand {
         commandName: "agent-backup",
         abstract: "Back up coding-agent MCP configs and sessions, and restore them on another Mac.",
         discussion: """
-        A backup LOCATION is either `gdrive` (My Drive/AgentBackup) or a local folder path.
+        A backup LOCATION is `gdrive` (My Drive/AgentBackup), `icloud` (iCloud Drive/AgentBackup) or a folder path.
         Everything stored there is encrypted with a key protected by your passphrase.
         Set AGENT_BACKUP_PASSPHRASE to skip the prompt (AGENT_BACKUP_NEW_PASSPHRASE for `passphrase change`);
         AGENT_BACKUP_NO_KEYCHAIN=1 to not cache the unlocked key.
@@ -41,8 +41,15 @@ let secrets: SecretStore = KeychainStore()
 let keys = KeyManager(secrets: secrets, cachesKeys: ProcessInfo.processInfo.environment["AGENT_BACKUP_NO_KEYCHAIN"] != "1")
 
 func openStore(_ location: String) throws -> BackupStore {
-    guard location == "gdrive" else { return LocalFolderStore(folder: expand(location)) }
-    return GoogleDriveStore(tokens: try googleAuth())
+    switch location {
+    case "gdrive": return GoogleDriveStore(tokens: try googleAuth())
+    case "icloud":
+        guard let store = LocalFolderStore.iCloudDrive() else {
+            throw CLIError("iCloud Drive isn't turned on for this Mac (System Settings › Apple Account › iCloud › iCloud Drive).")
+        }
+        return store
+    default: return LocalFolderStore(folder: expand(location))
+    }
 }
 
 func googleAuth() throws -> GoogleOAuth {
@@ -128,7 +135,7 @@ struct Detect: ParsableCommand {
 
 struct Backup: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Create an encrypted snapshot.")
-    @Option(name: .customLong("to"), help: "Backup location: `gdrive` or a folder.")
+    @Option(name: .customLong("to"), help: "Backup location: `gdrive`, `icloud` or a folder.")
     var location: String
     @Flag(help: "Afterwards, delete old snapshots by the standard retention policy.")
     var prune = false
@@ -180,7 +187,7 @@ struct Backup: AsyncParsableCommand {
 
 struct Snapshots: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "List snapshots.")
-    @Option(name: .customLong("from"), help: "Backup location: `gdrive` or a folder.")
+    @Option(name: .customLong("from"), help: "Backup location: `gdrive`, `icloud` or a folder.")
     var location: String
 
     func run() async throws {
@@ -199,7 +206,7 @@ struct Restore: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Restore a snapshot. Shows the plan only, unless --apply is given."
     )
-    @Option(name: .customLong("from"), help: "Backup location: `gdrive` or a folder.")
+    @Option(name: .customLong("from"), help: "Backup location: `gdrive`, `icloud` or a folder.")
     var location: String
     @Option(help: "Snapshot ID (default: latest).")
     var snapshot: String?
@@ -314,7 +321,7 @@ struct Prune: AsyncParsableCommand {
         abstract: "Delete old snapshots by a retention policy, then blobs no snapshot uses. Shows the plan unless --apply.",
         discussion: "The policy applies to each Mac's snapshots separately. Unused blobs younger than 24 hours are kept, in case another Mac is mid-backup."
     )
-    @Option(name: .customLong("from"), help: "Backup location: `gdrive` or a folder.")
+    @Option(name: .customLong("from"), help: "Backup location: `gdrive`, `icloud` or a folder.")
     var location: String
     @Option(help: "Keep the N newest snapshots.") var keepLast = RetentionPolicy.standard.keepLast
     @Option(help: "Keep the newest snapshot of each of the last N days.") var keepDaily = RetentionPolicy.standard.keepDaily
@@ -425,7 +432,7 @@ struct Schedule: ParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Back up every day at the given time (missed runs happen on wake).")
         @Option(help: "Hour (0-23).") var hour = 3
         @Option(help: "Minute (0-59).") var minute = 0
-        @Option(name: .customLong("to"), help: "Backup location: `gdrive` or a folder.") var location = "gdrive"
+        @Option(name: .customLong("to"), help: "Backup location: `gdrive`, `icloud` or a folder.") var location = "gdrive"
 
         func validate() throws {
             guard (0...23).contains(hour), (0...59).contains(minute) else { throw ValidationError("Invalid time.") }
@@ -436,7 +443,7 @@ struct Schedule: ParsableCommand {
             if executable.path.contains("/.build/") {
                 print("Note: scheduling a development build at \(executable.path); the bundled app's CLI is the stable choice.")
             }
-            let target = location == "gdrive" ? location : expand(location).path
+            let target = ["gdrive", "icloud"].contains(location) ? location : expand(location).path
             let schedule = BackupSchedule()
             try schedule.enable(executable: executable, settings: .init(hour: hour, minute: minute, location: target))
             print("Daily backup to \(target) at \(String(format: "%02d:%02d", hour, minute)). Log: \(schedule.logURL.path)")
@@ -477,7 +484,7 @@ struct Passphrase: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Change the passphrase. Existing snapshots stay readable; the old passphrase stops working."
         )
-        @Option(name: .customLong("from"), help: "Backup location: `gdrive` or a folder.")
+        @Option(name: .customLong("from"), help: "Backup location: `gdrive`, `icloud` or a folder.")
         var location: String
 
         func run() async throws {
@@ -498,7 +505,7 @@ struct Passphrase: AsyncParsableCommand {
 
 struct Lock: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Forget the unlocked key cached in Keychain for a location.")
-    @Option(name: .customLong("from"), help: "Backup location: `gdrive` or a folder.")
+    @Option(name: .customLong("from"), help: "Backup location: `gdrive`, `icloud` or a folder.")
     var location: String
 
     func run() async throws {

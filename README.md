@@ -7,6 +7,7 @@
 - 設計文件：[docs/DESIGN.md](docs/DESIGN.md)
 - UI 設計：[docs/UI.md](docs/UI.md)
 - Roadmap：[docs/ROADMAP.md](docs/ROADMAP.md)（[GitHub Milestones](https://github.com/kkdai/agent-backup/milestones)）
+- 備份位置：Google Drive、iCloud Drive 或本機資料夾
 - 支援備份：**Claude Code**、**Codex CLI**、**Gemini CLI**、**GitHub Copilot CLI**、**Claude Desktop**、**Cursor**（後兩者為 MCP 設定）
 
 ## App
@@ -31,7 +32,8 @@ B=.build/debug/agent-backup
 
 $B detect                                  # 偵測 agent、session 數、MCP servers
 $B backup --to gdrive                      # 備份到 My Drive/AgentBackup（第一次會設定 passphrase）
-$B backup --to ~/BackupFolder              # 或備份到本機資料夾
+$B backup --to icloud                      # 或 iCloud Drive/AgentBackup
+$B backup --to ~/BackupFolder              # 或本機資料夾
 $B snapshots --from gdrive                 # 列出快照
 
 # 還原：預設只顯示計畫（dry run），加 --apply 才寫入
