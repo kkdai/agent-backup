@@ -87,15 +87,23 @@ public struct PathMapper {
         return dirName
     }
 
-    /// Claude Code names `~/.claude/projects/<dir>` by replacing every
-    /// non-alphanumeric UTF-16 unit of the project path with `-`.
+    /// Claude Code names `~/.claude/projects/<dir>` by replacing every non-alphanumeric UTF-16
+    /// unit of the project path with `-`; names over 200 characters are cut to 200 and get
+    /// `-<base-36 hash of the path>` appended (same algorithm as Claude Code's sanitizer).
     public static func claudeProjectDirName(for path: String) -> String {
-        String(path.utf16.map { unit -> Character in
+        let sanitized = String(path.utf16.map { unit -> Character in
             switch unit {
             case 0x30...0x39, 0x41...0x5A, 0x61...0x7A: return Character(Unicode.Scalar(unit)!)
             default: return "-"
             }
         })
+        guard sanitized.count > 200 else { return sanitized }
+        return "\(sanitized.prefix(200))-\(String(abs(Int64(javaStringHash(path))), radix: 36))"
+    }
+
+    /// `h = h * 31 + unit` over UTF-16 units, wrapping at 32 bits (JS `(h << 5) - h + c | 0`).
+    static func javaStringHash(_ string: String) -> Int32 {
+        string.utf16.reduce(Int32(0)) { hash, unit in hash &* 31 &+ Int32(unit) }
     }
 
     private static func trimTrailingSlash(_ path: String) -> String {
