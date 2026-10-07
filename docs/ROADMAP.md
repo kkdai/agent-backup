@@ -40,7 +40,7 @@
 
 ## [M4 · 自動化與發佈](https://github.com/kkdai/agent-backup/milestone/4)（0/4）
 
-- [ ] [#20](https://github.com/kkdai/agent-backup/issues/20) 排程自動備份 + Menu bar `app` `distribution`
+- [x] [#20](https://github.com/kkdai/agent-backup/issues/20) 排程自動備份 + Menu bar `app` `distribution`
 - [ ] [#21](https://github.com/kkdai/agent-backup/issues/21) Developer ID 簽章 + Notarization + DMG / Homebrew cask `distribution`
 - [ ] [#22](https://github.com/kkdai/agent-backup/issues/22) 內建 OAuth client（使用者不用自建 Google Cloud 專案） `drive` `distribution`
 - [ ] [#23](https://github.com/kkdai/agent-backup/issues/23) 決定：App 名稱 `decision`
