@@ -135,3 +135,31 @@ struct MCPCopyTests {
         #expect(RollbackPoint.list(home: home).count == 1)
     }
 }
+
+struct CursorTests {
+    let home = FileManager.default.temporaryDirectory.appendingPathComponent("cursor-\(UUID().uuidString)")
+
+    @Test func copiesIntoCursorAndRestoresConfig() async throws {
+        let config = home.appendingPathComponent(".cursor/mcp.json")
+        try FileManager.default.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"mcpServers":{"mine":{"command":"x"}}}"#.utf8).write(to: config)
+        let registry = MCPRegistry(home: home)
+
+        let servers = [
+            MCPServer(name: "fs", transport: .stdio, command: "npx", args: ["fs"]),
+            MCPServer(name: "docs", transport: .http, url: "https://docs", headers: ["K": "v"]),
+            MCPServer(name: "old", transport: .sse, url: "https://old/sse"),
+        ]
+        var restore = RestorePlan(agentID: "cursor")
+        restore.writes = [try #require(try registry.planCopy(servers, to: "cursor").write)]
+        _ = try BackupEngine.apply([restore], home: home)
+
+        let back = Dictionary(uniqueKeysWithValues: registry.servers(of: "cursor").map { ($0.name, $0) })
+        #expect(back.keys.sorted() == ["docs", "fs", "mine", "old"])
+        for server in servers { #expect(back[server.name]?.sameConfig(as: server) == true, "\(server.name)") }
+
+        let provider = CursorProvider(home: home)
+        #expect(provider.isInstalled())
+        #expect(try provider.collect().map(\.path) == [".cursor/mcp.json"])
+    }
+}
