@@ -7,7 +7,11 @@ enum Main {
     static func main() {
         // `--render <dir>` writes PNGs of each screen with live data and exits (used for UI review in CI/agents).
         let args = CommandLine.arguments
-        if let index = args.firstIndex(of: "--render-wizard"), index + 3 < args.count {
+        if let index = args.firstIndex(of: "--render-sessions"), index + 3 < args.count {
+            // --render-sessions <backup folder> <search query or ""> <output dir>
+            ScreenRenderer.runSessions(backup: URL(fileURLWithPath: args[index + 1]), query: args[index + 2],
+                                       outputDirectory: URL(fileURLWithPath: args[index + 3]))
+        } else if let index = args.firstIndex(of: "--render-wizard"), index + 3 < args.count {
             // --render-wizard <backup folder> <target home> <output dir>; passphrase from AGENT_BACKUP_PASSPHRASE.
             ScreenRenderer.runWizard(backup: URL(fileURLWithPath: args[index + 1]), home: URL(fileURLWithPath: args[index + 2]),
                                      outputDirectory: URL(fileURLWithPath: args[index + 3]))
@@ -135,6 +139,9 @@ struct ContentView: View {
         .sheet(item: $model.restoreWizard) { wizard in
             RestoreWizardView(wizard: wizard)
         }
+        .sheet(item: $model.sessionBrowser) { browser in
+            SessionBrowserView(browser: browser)
+        }
     }
 }
 
@@ -180,6 +187,39 @@ enum ScreenRenderer {
                     try? png.write(to: file)
                     print(file.path)
                 }
+            }
+            exit(0)
+        }
+        RunLoop.main.run()
+    }
+
+    /// Renders the session browser for the newest snapshot in a local backup folder.
+    static func runSessions(backup: URL, query: String, outputDirectory: URL) {
+        _ = NSApplication.shared
+        Task { @MainActor in
+            do {
+                let store = LocalFolderStore(folder: backup)
+                guard let keyfile = try await BackupEngine.keyfile(in: store) else { throw BackupError.notInitialized }
+                let vault = try Vault.unlock(keyfile, passphrase: ProcessInfo.processInfo.environment["AGENT_BACKUP_PASSPHRASE"] ?? "")
+                guard let snapshot = try await store.snapshotIDs().compactMap(SnapshotRef.init).max(by: { $0.date < $1.date }) else {
+                    throw BackupError.noSnapshots
+                }
+                let browser = SessionBrowserModel(engine: BackupEngine(store: store, vault: vault), snapshot: snapshot)
+                await browser.load()
+                browser.query = query
+                browser.selectedID = browser.filtered.first?.id
+                try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+                let renderer = ImageRenderer(content: SessionBrowserView(browser: browser, fixedHeight: false)
+                    .frame(height: 760).background(Color(nsColor: .windowBackgroundColor)))
+                renderer.scale = 1.5
+                if let tiff = renderer.nsImage?.tiffRepresentation,
+                   let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                    let file = outputDirectory.appendingPathComponent("sessions.png")
+                    try png.write(to: file)
+                    print(file.path, browser.sessions.count, "sessions,", browser.filtered.count, "match")
+                }
+            } catch {
+                print("render failed: \(error)")
             }
             exit(0)
         }

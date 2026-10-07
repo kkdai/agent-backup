@@ -359,6 +359,21 @@ final class AppModel {
         }
     }
 
+    // MARK: - Browse
+
+    var sessionBrowser: SessionBrowserModel?
+
+    func browse(_ snapshot: SnapshotRef) async {
+        do {
+            let (store, vault) = try await requestVault(allowCreate: false)
+            sessionBrowser = SessionBrowserModel(engine: BackupEngine(store: store, vault: vault), snapshot: snapshot)
+        } catch is CancellationError {
+            return
+        } catch {
+            rollbackMessage = "無法開啟備份：\(error.localizedDescription)"
+        }
+    }
+
     // MARK: - Restore
 
     var restoreWizard: RestoreWizardModel?

@@ -261,6 +261,8 @@ struct SnapshotsView: View {
                 Text("\(snapshot.hostname) · \(Format.relative(snapshot.date))").font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
+            Button("瀏覽…") { Task { await model.browse(snapshot) } }
+                .help("閱讀、搜尋這份備份裡的聊天記錄")
             Button("還原…") { Task { await model.startRestore(snapshotID: snapshot.id) } }
                 .help("把這份備份還原到這台 Mac")
         }
