@@ -10,11 +10,14 @@ VERSION="$(git -C "$ROOT" describe --tags --always 2>/dev/null || echo 0.0.0)"
 
 cd "$ROOT"
 swift build -c release --product AgentBackupApp
-BIN="$(swift build -c release --show-bin-path)/AgentBackupApp"
+swift build -c release --product agent-backup
+BIN_DIR="$(swift build -c release --show-bin-path)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/AgentBackupApp"
+cp "$BIN_DIR/AgentBackupApp" "$APP/Contents/MacOS/AgentBackupApp"
+# The CLI ships inside the app: scheduled backups (LaunchAgent) run it from here.
+cp "$BIN_DIR/agent-backup" "$APP/Contents/MacOS/agent-backup"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

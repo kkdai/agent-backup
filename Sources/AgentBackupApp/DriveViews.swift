@@ -136,6 +136,7 @@ struct DriveView: View {
                     }
                 }
             }
+            ScheduleCard()
             HStack {
                 Button("重新整理") { Task { await model.refreshDrive() } }
                 if status.initialized {
@@ -154,6 +155,44 @@ struct DriveView: View {
             }
             .sheet(isPresented: $pruning) {
                 PruneSheet().environment(model)
+            }
+        }
+    }
+}
+
+struct ScheduleCard: View {
+    @Environment(AppModel.self) private var model
+    @State private var hour = 3
+
+    var body: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("自動備份").font(.headline)
+                        Text(model.schedule.map { "每天 \(String(format: "%02d:%02d", $0.hour, $0.minute)) 備份並清理舊備份；錯過的會在 Mac 喚醒後補做。" }
+                             ?? "每天固定時間自動備份到 Google Drive，不需要打開 App。")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if model.schedule == nil {
+                        Picker("", selection: $hour) {
+                            ForEach(0..<24, id: \.self) { Text(String(format: "%02d:00", $0)).tag($0) }
+                        }
+                        .labelsHidden().frame(width: 90)
+                    }
+                    Toggle("", isOn: Binding(
+                        get: { model.schedule != nil },
+                        set: { model.setSchedule($0 ? .init(hour: hour, minute: 0) : nil) }
+                    ))
+                    .toggleStyle(.switch).labelsHidden()
+                }
+                if let error = model.scheduleError {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
+                if model.schedule != nil, let last = BackupSchedule().recentLog(lines: 1).first {
+                    Text("最近一次：\(last)").font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+                }
             }
         }
     }

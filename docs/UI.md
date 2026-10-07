@@ -112,7 +112,12 @@
 ## 4. 待做畫面
 
 
-### 4.2 Menu bar（#20）
+### 4.2 Menu bar ✅（#20）
+
+已實作：上次備份、備份進度、立即備份（⌘B）、每天自動備份開關、打開主視窗。Google Drive 頁另有「自動備份」卡片可選時間。
+排程是使用者層級的 LaunchAgent（`~/Library/LaunchAgents/com.kkdai.agent-backup.scheduled.plist`），執行 App 內附的 CLI：`backup --to gdrive --prune --unattended`，log 在 `~/Library/Logs/AgentBackup/scheduled.log`。排程執行絕不跳出輸入框：這台 Mac 必須先解鎖過一次（金鑰在 Keychain），也不會自己建立新的備份位置。
+
+原始設計：
 
 ```
 ☁︎ Agent Backup

@@ -14,7 +14,7 @@ struct AgentBackupCLI: AsyncParsableCommand {
         Set AGENT_BACKUP_PASSPHRASE to skip the prompt (AGENT_BACKUP_NEW_PASSPHRASE for `passphrase change`);
         AGENT_BACKUP_NO_KEYCHAIN=1 to not cache the unlocked key.
         """,
-        subcommands: [Detect.self, Backup.self, Snapshots.self, Restore.self, Rollback.self, Prune.self, MCP.self, Passphrase.self, Lock.self, Drive.self]
+        subcommands: [Detect.self, Backup.self, Snapshots.self, Restore.self, Rollback.self, Prune.self, MCP.self, Schedule.self, Passphrase.self, Lock.self, Drive.self]
     )
 }
 
@@ -66,6 +66,12 @@ func ensureAgentsStopped(_ agentIDs: [String], home: URL, force: Bool) throws {
     }
 }
 
+/// An error that shouldn't print usage help (unlike ValidationError).
+struct CLIError: LocalizedError {
+    let errorDescription: String?
+    init(_ message: String) { errorDescription = message }
+}
+
 func readPassphrase(_ prompt: String) throws -> String {
     if let env = ProcessInfo.processInfo.environment["AGENT_BACKUP_PASSPHRASE"], !env.isEmpty { return env }
     var buffer = [CChar](repeating: 0, count: 1024)
@@ -76,12 +82,16 @@ func readPassphrase(_ prompt: String) throws -> String {
 }
 
 /// Unlocks the location's key: Keychain cache first, then the passphrase. Creates a new key when allowed.
-func openVault(_ store: BackupStore, createIfMissing: Bool) async throws -> Vault {
+/// `unattended` never prompts (scheduled runs): it needs the key already cached on this Mac.
+func openVault(_ store: BackupStore, createIfMissing: Bool, unattended: Bool = false) async throws -> Vault {
     if let keyfile = try await BackupEngine.keyfile(in: store) {
         if let vault = keys.cachedVault(for: keyfile) { return vault }
+        if unattended && ProcessInfo.processInfo.environment["AGENT_BACKUP_PASSPHRASE"] == nil {
+            throw CLIError("The backup key isn't unlocked on this Mac. Open Agent Backup (or run `agent-backup backup` in a terminal) once to enter the passphrase.")
+        }
         return try keys.unlock(keyfile, passphrase: try readPassphrase("Passphrase for \(store.displayName): "))
     }
-    guard createIfMissing else { throw BackupError.notInitialized }
+    guard createIfMissing, !unattended else { throw BackupError.notInitialized }
 
     print("New backup location: \(store.displayName)")
     print("Choose a passphrase. You'll need it on the new Mac — if it's lost, the backup can't be decrypted.")
@@ -120,12 +130,20 @@ struct Backup: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Create an encrypted snapshot.")
     @Option(name: .customLong("to"), help: "Backup location: `gdrive` or a folder.")
     var location: String
+    @Flag(help: "Afterwards, delete old snapshots by the standard retention policy.")
+    var prune = false
+    @Flag(help: "Never prompt (for scheduled runs): fail if the key isn't cached in Keychain.")
+    var unattended = false
     @OptionGroup var home: HomeOption
 
     func run() async throws {
         let homeURL = home.url
+        if unattended {
+            setvbuf(stdout, nil, _IOLBF, 0)   // keep log lines in order with stderr
+            print("[\(Date().formatted(.iso8601))] scheduled backup")
+        }
         let store = try openStore(location)
-        let engine = BackupEngine(store: store, vault: try await openVault(store, createIfMissing: true))
+        let engine = BackupEngine(store: store, vault: try await openVault(store, createIfMissing: !unattended, unattended: unattended))
         let source = SourceInfo(
             hostname: Host.current().localizedName ?? ProcessInfo.processInfo.hostName,
             userName: homeURL.lastPathComponent, home: homeURL.path
@@ -152,6 +170,11 @@ struct Backup: AsyncParsableCommand {
             print("  \(agent.agentID): \(parts.joined(separator: ", "))")
         }
         print("\(result.fileCount) files (\(formatBytes(result.manifest.totalSize))); uploaded \(result.newBlobCount) new blobs (\(formatBytes(result.uploadedBytes))).")
+        if prune {
+            let plan = try await engine.planPrune()
+            try await engine.prune(plan)
+            print("Pruned \(plan.deletedSnapshots.count) old snapshots and \(plan.deletedBlobs.count) unused blobs (\(formatBytes(plan.freedBytes))).")
+        }
     }
 }
 
@@ -388,6 +411,58 @@ struct MCP: ParsableCommand {
             restorePlan.writes = [write]
             _ = try BackupEngine.apply([restorePlan], home: home.url)
             print("\nUpdated \(write.target.path). Undo with: agent-backup rollback --apply")
+        }
+    }
+}
+
+struct Schedule: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Daily automatic backup (a LaunchAgent running this CLI).",
+        subcommands: [Enable.self, Disable.self, Status.self]
+    )
+
+    struct Enable: ParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Back up every day at the given time (missed runs happen on wake).")
+        @Option(help: "Hour (0-23).") var hour = 3
+        @Option(help: "Minute (0-59).") var minute = 0
+        @Option(name: .customLong("to"), help: "Backup location: `gdrive` or a folder.") var location = "gdrive"
+
+        func validate() throws {
+            guard (0...23).contains(hour), (0...59).contains(minute) else { throw ValidationError("Invalid time.") }
+        }
+
+        func run() throws {
+            let executable = (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).resolvingSymlinksInPath()
+            if executable.path.contains("/.build/") {
+                print("Note: scheduling a development build at \(executable.path); the bundled app's CLI is the stable choice.")
+            }
+            let target = location == "gdrive" ? location : expand(location).path
+            let schedule = BackupSchedule()
+            try schedule.enable(executable: executable, settings: .init(hour: hour, minute: minute, location: target))
+            print("Daily backup to \(target) at \(String(format: "%02d:%02d", hour, minute)). Log: \(schedule.logURL.path)")
+            print("It never prompts: unlock the backup once on this Mac (run a backup in the terminal or the app) so the key is in Keychain.")
+        }
+    }
+
+    struct Disable: ParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Stop automatic backups.")
+        func run() throws {
+            try BackupSchedule().disable()
+            print("Automatic backup turned off.")
+        }
+    }
+
+    struct Status: ParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Show the schedule and the end of the last run's log.")
+        func run() throws {
+            let schedule = BackupSchedule()
+            guard let current = schedule.current else {
+                print("Automatic backup is off.")
+                return
+            }
+            print("Daily at \(String(format: "%02d:%02d", current.hour, current.minute)) → \(current.location)")
+            let log = schedule.recentLog(lines: 8)
+            if !log.isEmpty { print("Recent log:\n" + log.map { "  " + $0 }.joined(separator: "\n")) }
         }
     }
 }

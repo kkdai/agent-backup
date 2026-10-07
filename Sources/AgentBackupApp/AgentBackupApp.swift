@@ -28,7 +28,7 @@ struct AgentBackupApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Agent Backup") {
+        WindowGroup("Agent Backup", id: "main") {
             ContentView()
                 .environment(model)
                 .frame(minWidth: 960, minHeight: 620)
@@ -41,6 +41,43 @@ struct AgentBackupApp: App {
                     .keyboardShortcut("r")
             }
         }
+
+        MenuBarExtra("Agent Backup", systemImage: "externaldrive.badge.icloud") {
+            MenuBarContent().environment(model)
+        }
+    }
+}
+
+struct MenuBarContent: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        if let latest = model.latestSnapshot {
+            Text("上次備份：\(Format.relative(latest.date))（\(latest.hostname)）")
+        } else {
+            Text(model.driveStatus == nil ? "尚未連線 Google Drive" : "尚未備份")
+        }
+        if case .running(let progress) = model.backupState {
+            Text(progress.map { "備份中… \($0.filesDone)/\($0.filesTotal)" } ?? "備份中…")
+        }
+        Divider()
+        Button("立即備份") {
+            NSApp.activate(ignoringOtherApps: true)   // the passphrase sheet may need the window
+            Task { await model.startBackup() }
+        }
+        .keyboardShortcut("b")
+        .disabled(!model.canBackUp)
+        Toggle("每天自動備份", isOn: Binding(
+            get: { model.schedule != nil },
+            set: { model.setSchedule($0 ? .init() : nil) }
+        ))
+        Divider()
+        Button("打開 Agent Backup") {
+            NSApp.activate(ignoringOtherApps: true)
+            openWindow(id: "main")
+        }
+        Button("結束") { NSApp.terminate(nil) }.keyboardShortcut("q")
     }
 }
 

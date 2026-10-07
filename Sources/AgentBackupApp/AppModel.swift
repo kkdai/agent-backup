@@ -74,6 +74,8 @@ final class AppModel {
     var rollbackPoints: [RollbackPoint] = []
     /// agent ID → its MCP servers, for agents set up on this Mac.
     var mcpServers: [String: [MCPServer]] = [:]
+    var schedule: BackupSchedule.Settings? = BackupSchedule().current
+    var scheduleError: String?
     var mcpMessage: String?
     var rollbackMessage: String?
 
@@ -151,6 +153,29 @@ final class AppModel {
         } catch {
             drive = .failed(error.localizedDescription)
         }
+    }
+
+    // MARK: - Schedule
+
+    /// The CLI bundled in the app; nil when running unbundled (`swift run`).
+    var bundledCLI: URL? { Bundle.main.url(forAuxiliaryExecutable: "agent-backup") }
+
+    func setSchedule(_ settings: BackupSchedule.Settings?) {
+        scheduleError = nil
+        do {
+            if let settings {
+                guard let cli = bundledCLI else {
+                    scheduleError = "自動備份需要從打包好的 App 啟用（scripts/build-app.sh）。"
+                    return
+                }
+                try BackupSchedule().enable(executable: cli, settings: settings)
+            } else {
+                try BackupSchedule().disable()
+            }
+        } catch {
+            scheduleError = error.localizedDescription
+        }
+        schedule = BackupSchedule().current
     }
 
     // MARK: - MCP
