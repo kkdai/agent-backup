@@ -7,6 +7,7 @@ enum Route: Hashable {
     case agent(String)
     case drive
     case snapshots
+    case mcp
 }
 
 struct SnapshotRef: Identifiable, Hashable {
@@ -71,6 +72,9 @@ final class AppModel {
     var passphrasePrompt: PassphrasePrompt?
     var isLoggingIn = false
     var rollbackPoints: [RollbackPoint] = []
+    /// agent ID → its MCP servers, for agents set up on this Mac.
+    var mcpServers: [String: [MCPServer]] = [:]
+    var mcpMessage: String?
     var rollbackMessage: String?
 
     private var auth: GoogleOAuth?
@@ -118,6 +122,7 @@ final class AppModel {
         isScanning = true
         let home = home
         agents = await Task.detached(priority: .userInitiated) { AgentCatalog.scan(home: home) }.value
+        loadMCP()
         isScanning = false
     }
 
@@ -146,6 +151,36 @@ final class AppModel {
         } catch {
             drive = .failed(error.localizedDescription)
         }
+    }
+
+    // MARK: - MCP
+
+    func loadMCP() {
+        let registry = MCPRegistry(home: home)
+        mcpServers = Dictionary(uniqueKeysWithValues: MCPRegistry.agentIDs.filter(registry.isAvailable).map { ($0, registry.servers(of: $0)) })
+    }
+
+    func planMCPCopy(_ server: MCPServer, to agent: String, replace: Bool) throws -> MCPRegistry.CopyPlan {
+        try MCPRegistry(home: home).planCopy([server], to: agent, replace: replace)
+    }
+
+    func applyMCPCopy(_ plan: MCPRegistry.CopyPlan) {
+        guard let write = plan.write else { return }
+        let name = agent(plan.agent)?.name ?? plan.agent
+        if RunningAgents.isRunning(plan.agent) {
+            mcpMessage = "\(name) 正在執行，它可能會覆寫設定檔。請先關閉再加入。"
+            return
+        }
+        do {
+            var restorePlan = RestorePlan(agentID: plan.agent)
+            restorePlan.writes = [write]
+            _ = try BackupEngine.apply([restorePlan], home: home)
+            mcpMessage = "已加入 \((plan.added + plan.replaced).joined(separator: "、")) 到 \(name)。重新啟動 \(name) 後生效；可在「備份紀錄 › 最近的還原」復原。"
+        } catch {
+            mcpMessage = "加入失敗：\(error.localizedDescription)"
+        }
+        loadMCP()
+        rollbackPoints = RollbackPoint.list(home: home)
     }
 
     // MARK: - Rollback

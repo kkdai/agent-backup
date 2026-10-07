@@ -109,28 +109,9 @@ public enum AgentCatalog {
         return servers.keys.sorted().map { MCPServerInfo(name: $0, project: nil, config: servers[$0] as? [String: Any] ?? [:]) }
     }
 
-    /// Server names from `[mcp_servers.<name>]` tables; full TOML parsing comes with the Codex provider (#12).
     static func codexMCP(_ url: URL) -> [MCPServerInfo] {
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-        var servers: [String: [String: Any]] = [:]
-        var current: String?
-        for raw in text.split(separator: "\n") {
-            let line = raw.trimmingCharacters(in: .whitespaces)
-            if line.hasPrefix("[") {
-                current = nil
-                if line.hasPrefix("[mcp_servers."), line.hasSuffix("]") {
-                    let name = String(line.dropFirst("[mcp_servers.".count).dropLast())
-                    if !name.contains(".") {
-                        current = name.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-                        servers[current!] = [:]
-                    }
-                }
-            } else if let current, let eq = line.firstIndex(of: "=") {
-                let key = line[..<eq].trimmingCharacters(in: .whitespaces)
-                let value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-                if key == "command" || key == "url" { servers[current]?[key] = value }
-            }
-        }
-        return servers.keys.sorted().map { MCPServerInfo(name: $0, project: nil, config: servers[$0] ?? [:]) }
+        MCPRegistry.parseCodex((try? String(contentsOf: url, encoding: .utf8)) ?? "")
+            .sorted { $0.name < $1.name }
+            .map(MCPServerInfo.init)
     }
 }
