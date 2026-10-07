@@ -66,7 +66,7 @@ public enum MCPWarning: Hashable {
 
 /// Reads and writes the user-level MCP servers of each agent.
 public struct MCPRegistry {
-    public static let agentIDs = ["claude-code", "claude-desktop", "codex", "gemini-cli", "copilot-cli"]
+    public static let agentIDs = ["claude-code", "claude-desktop", "codex", "gemini-cli", "copilot-cli", "cursor"]
 
     public let home: URL
 
@@ -81,6 +81,7 @@ public struct MCPRegistry {
         case "codex": home.appendingPathComponent(".codex/config.toml")
         case "gemini-cli": home.appendingPathComponent(".gemini/settings.json")
         case "copilot-cli": home.appendingPathComponent(".copilot/mcp-config.json")
+        case "cursor": home.appendingPathComponent(".cursor/mcp.json")
         default: nil
         }
     }
@@ -90,6 +91,7 @@ public struct MCPRegistry {
         guard let file = configFile(agent) else { return false }
         return fileExists(file) || fileExists(file.deletingLastPathComponent())
             || (agent == "claude-desktop" && FileManager.default.fileExists(atPath: "/Applications/Claude.app"))
+            || (agent == "cursor" && FileManager.default.fileExists(atPath: "/Applications/Cursor.app"))
     }
 
     // MARK: Reading
@@ -207,6 +209,14 @@ public struct MCPRegistry {
             local()
             out["tools"] = ["*"]
             if s.cwd != nil { warnings.append(.droppedField(server: s.name, field: "cwd")) }
+        case ("cursor", .stdio):
+            local()
+            if s.cwd != nil { warnings.append(.droppedField(server: s.name, field: "cwd")) }
+        case ("cursor", _):
+            // Cursor detects streamable HTTP vs SSE from the URL itself.
+            out["url"] = s.url
+            if !s.headers.isEmpty { out["headers"] = s.headers }
+            if s.transport == .sse { out["type"] = "sse" }
         case ("copilot-cli", _):
             out["type"] = s.transport.rawValue
             out["url"] = s.url

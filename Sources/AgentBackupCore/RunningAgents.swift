@@ -19,6 +19,7 @@ public enum RunningAgents {
         "copilot-cli": Signature(executables: ["copilot"], argumentMarkers: ["@github/copilot/"]),
         // The app's main process; its helpers are "Claude Helper (…)".
         "claude-desktop": Signature(executables: ["Claude"], argumentMarkers: []),
+        "cursor": Signature(executables: ["Cursor"], argumentMarkers: []),
     ]
 
     public struct Process: Equatable {

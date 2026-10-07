@@ -53,8 +53,8 @@ public enum AgentCatalog {
         Definition(id: "claude-desktop", name: "Claude Desktop", support: .supported,
                    paths: ["Library/Application Support/Claude/claude_desktop_config.json"], apps: ["/Applications/Claude.app"],
                    mcp: { jsonMCP($0.appendingPathComponent("Library/Application Support/Claude/claude_desktop_config.json")) }),
-        Definition(id: "cursor", name: "Cursor", support: .planned(issue: 18),
-                   paths: [".cursor"], apps: ["/Applications/Cursor.app"], mcp: { jsonMCP($0.appendingPathComponent(".cursor/mcp.json")) }),
+        Definition(id: "cursor", name: "Cursor", support: .supported,
+                   paths: [".cursor"], apps: ["/Applications/Cursor.app"], mcp: { _ in [] }),
     ]
 
     /// Walks the disk; call off the main thread. Installed agents come first.

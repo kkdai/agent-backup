@@ -228,3 +228,9 @@ AgentBackup/                       ← 使用者看得到的資料夾（已決�
 - 換 passphrase 的指令（`Vault.keyfile(passphrase:)` 已經有，CLI 還沒接）
 - 舊快照清理（保留策略 + 刪除沒被引用的 blob）
 - 正式 App 要內建 OAuth client，使用者就不用自己建 Google Cloud 專案
+
+## 13. Cursor（#18 調查結果，2026-10-07）
+
+- **MCP**：全域設定在 `~/.cursor/mcp.json`（`mcpServers`，與 Claude 相同形狀；遠端 server 用 `url`，Cursor 依網址自動判斷 streamable HTTP / SSE）。已支援備份、還原（逐一合併）與跨 agent 複製
+- **聊天記錄不搬**：存在 `~/Library/Application Support/Cursor/User/workspaceStorage/<id>/state.vscdb`。`<id>` 由工作區資料夾推導（macOS 上包含資料夾建立時間），複製到新 Mac 後資料夾的 id 不同，聊天不會對應回原專案；社群也有升級後聊天消失的回報。交給 Cursor 自己的帳號同步
+- 專案內的 `.cursor/mcp.json`、`.cursor/rules` 跟著專案的 git 走
