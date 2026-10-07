@@ -67,6 +67,9 @@ struct ContentView: View {
                         .tag(Route.agent(agent.id))
                     }
                 }
+                Section("工具") {
+                    Label("MCP servers", systemImage: "point.3.connected.trianglepath.dotted").tag(Route.mcp)
+                }
                 Section("備份") {
                     Label("Google Drive", systemImage: "icloud").tag(Route.drive)
                     Label("備份紀錄", systemImage: "clock.arrow.circlepath").tag(Route.snapshots)
@@ -109,6 +112,7 @@ struct RouteView: View {
             if let agent = model.agent(id) { AgentDetailView(agent: agent) } else { OverviewView() }
         case .drive: DriveView()
         case .snapshots: SnapshotsView()
+        case .mcp: MCPView()
         }
     }
 }
@@ -122,7 +126,7 @@ enum ScreenRenderer {
             let model = AppModel()
             await model.refresh()
             try? FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
-            var screens: [(String, Route)] = [("overview", .overview), ("drive", .drive), ("snapshots", .snapshots)]
+            var screens: [(String, Route)] = [("overview", .overview), ("drive", .drive), ("snapshots", .snapshots), ("mcp", .mcp)]
             screens += model.installedAgents.map { ("agent-\($0.id)", .agent($0.id)) }
             for scheme in [ColorScheme.light, .dark] {
                 for (name, route) in screens {

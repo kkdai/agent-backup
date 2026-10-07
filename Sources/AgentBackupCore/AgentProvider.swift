@@ -69,6 +69,13 @@ public struct MCPServerInfo: Equatable, Identifiable {
 
     public var id: String { "\(project ?? "")\u{0}\(name)" }
 
+    init(_ server: MCPServer) {
+        name = server.name
+        project = server.project
+        transport = Transport(rawValue: server.transport.rawValue) ?? .unknown
+        target = server.summary
+    }
+
     init(name: String, project: String?, config: [String: Any]) {
         self.name = name
         self.project = project

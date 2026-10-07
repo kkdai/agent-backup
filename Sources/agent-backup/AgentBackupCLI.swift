@@ -14,7 +14,7 @@ struct AgentBackupCLI: AsyncParsableCommand {
         Set AGENT_BACKUP_PASSPHRASE to skip the prompt (AGENT_BACKUP_NEW_PASSPHRASE for `passphrase change`);
         AGENT_BACKUP_NO_KEYCHAIN=1 to not cache the unlocked key.
         """,
-        subcommands: [Detect.self, Backup.self, Snapshots.self, Restore.self, Rollback.self, Prune.self, Passphrase.self, Lock.self, Drive.self]
+        subcommands: [Detect.self, Backup.self, Snapshots.self, Restore.self, Rollback.self, Prune.self, MCP.self, Passphrase.self, Lock.self, Drive.self]
     )
 }
 
@@ -314,6 +314,81 @@ struct Prune: AsyncParsableCommand {
         }
         try await engine.prune(plan)
         print("\nDone.")
+    }
+}
+
+struct MCP: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "mcp",
+        abstract: "List MCP servers across agents, and copy them from one agent to another.",
+        subcommands: [List.self, Copy.self]
+    )
+
+    static let agentNames = Dictionary(uniqueKeysWithValues: MCPRegistry.agentIDs.map { id in
+        (id, Providers.provider(id: id, home: URL(fileURLWithPath: NSHomeDirectory()))?.displayName ?? id)
+    })
+
+    struct List: ParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Show every agent's MCP servers (never env or header values).")
+        @OptionGroup var home: HomeOption
+
+        func run() throws {
+            let registry = MCPRegistry(home: home.url)
+            for agent in MCPRegistry.agentIDs where registry.isAvailable(agent) {
+                let servers = registry.servers(of: agent)
+                print("\(MCP.agentNames[agent]!) (\(agent)): \(servers.isEmpty ? "none" : "\(servers.count)")")
+                for s in servers {
+                    let scope = s.project.map { " [project \(($0 as NSString).abbreviatingWithTildeInPath)]" } ?? ""
+                    let secrets = s.env.isEmpty && s.headers.isEmpty ? "" : " (+\(s.env.count + s.headers.count) secret values)"
+                    print("  \(s.name) [\(s.transport.rawValue)] \(s.summary)\(scope)\(secrets)")
+                }
+            }
+        }
+    }
+
+    struct Copy: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Copy MCP servers into another agent's user config. Shows the plan unless --apply."
+        )
+        @Option(help: "Source agent: \(MCPRegistry.agentIDs.joined(separator: ", ")).") var from: String
+        @Option(help: "Target agent.") var to: String
+        @Option(name: .customLong("server"), help: "Server name to copy (repeatable; default: all).") var servers: [String] = []
+        @Flag(help: "Overwrite servers with the same name in the target.") var replace = false
+        @Flag(help: "Write the target config.") var apply = false
+        @Flag(help: "Write even if the target agent is running.") var force = false
+        @OptionGroup var home: HomeOption
+
+        func run() throws {
+            for agent in [from, to] where !MCPRegistry.agentIDs.contains(agent) {
+                throw ValidationError("Unknown agent '\(agent)'. Use one of: \(MCPRegistry.agentIDs.joined(separator: ", ")).")
+            }
+            let registry = MCPRegistry(home: home.url)
+            guard registry.isAvailable(to) else { throw ValidationError("\(MCP.agentNames[to]!) isn't set up on this Mac.") }
+            var selected = registry.servers(of: from)
+            if !servers.isEmpty {
+                let missing = Set(servers).subtracting(selected.map(\.name))
+                guard missing.isEmpty else { throw ValidationError("Not in \(from): \(missing.sorted().joined(separator: ", "))") }
+                selected = selected.filter { servers.contains($0.name) }
+            }
+            let plan = try registry.planCopy(selected, to: to, replace: replace)
+            print("\(MCP.agentNames[from]!) → \(MCP.agentNames[to]!)")
+            if !plan.added.isEmpty { print("  add: \(plan.added.joined(separator: ", "))") }
+            if !plan.replaced.isEmpty { print("  replace: \(plan.replaced.joined(separator: ", "))") }
+            for warning in plan.warnings { print("  ! \(warning.message)") }
+            guard let write = plan.write else {
+                print("Nothing to write.")
+                return
+            }
+            guard apply else {
+                print("\nDry run — \(write.target.path) not changed. Re-run with --apply.")
+                return
+            }
+            try ensureAgentsStopped([to], home: home.url, force: force)
+            var restorePlan = RestorePlan(agentID: to)
+            restorePlan.writes = [write]
+            _ = try BackupEngine.apply([restorePlan], home: home.url)
+            print("\nUpdated \(write.target.path). Undo with: agent-backup rollback --apply")
+        }
     }
 }
 

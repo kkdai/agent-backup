@@ -128,9 +128,13 @@
 
 - 自動備份排程、要備份的類別、保留份數（#5）、更換 passphrase（#4）、鎖定（清除 Keychain 金鑰）
 
-### 4.4 跨 Agent MCP（#16）
+### 3.7 MCP servers ✅（#16）
 
-MCP 矩陣：列為 MCP server、欄為 agent，勾選即複製到該 agent；無法轉換的欄位以警告標示。
+矩陣：列為 MCP server（依名稱合併）、欄為這台 Mac 已設定的 agent。
+- ✅ 已設定、🟠 同名但設定不同、➕ 點一下加入（先確認，顯示轉換警告）
+- 寫入走與還原相同的流程：先存復原點，可在「最近的還原」退回；目標 agent 執行中時不寫入
+- 轉換：Claude Desktop 只能跑本機 server，遠端的會用 `npx mcp-remote` 包起來；Codex 不支援 SSE；不支援的欄位（如 `cwd`）會提示
+- 不顯示 env / header 的值
 
 ## 5. 實作結構
 
