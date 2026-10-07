@@ -38,7 +38,7 @@
 - [x] [#18](https://github.com/kkdai/agent-backup/issues/18) 調查 Cursor 的 MCP / 聊天記錄格式 `provider`
 - [ ] [#19](https://github.com/kkdai/agent-backup/issues/19) 決定：是否備份專案內的 .mcp.json / CLAUDE.md / AGENTS.md `provider` `decision`
 
-## [M4 · 自動化與發佈](https://github.com/kkdai/agent-backup/milestone/4)（0/4）
+## [M4 · 自動化與發佈](https://github.com/kkdai/agent-backup/milestone/4)（1/4）
 
 - [x] [#20](https://github.com/kkdai/agent-backup/issues/20) 排程自動備份 + Menu bar `app` `distribution`
 - [ ] [#21](https://github.com/kkdai/agent-backup/issues/21) Developer ID 簽章 + Notarization + DMG / Homebrew cask `distribution`
