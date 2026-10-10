@@ -1,0 +1,22 @@
+# Homebrew cask for a tap such as kkdai/homebrew-tap (Casks/agent-backup.rb).
+# scripts/update-cask.sh fills VERSION and SHA256 from a release.
+cask "agent-backup" do
+  version "__VERSION__"
+  sha256 "__SHA256__"
+
+  url "https://github.com/kkdai/agent-backup/releases/download/v#{version}/AgentBackup-#{version}.dmg"
+  name "Agent Backup"
+  desc "Encrypted backup and migration of coding-agent settings, MCP servers and sessions"
+  homepage "https://github.com/kkdai/agent-backup"
+
+  depends_on macos: ">= :sonoma"
+
+  app "Agent Backup.app"
+  binary "#{appdir}/Agent Backup.app/Contents/MacOS/agent-backup"
+
+  zap trash: [
+    "~/Library/Application Support/AgentBackup",
+    "~/Library/LaunchAgents/com.kkdai.agent-backup.scheduled.plist",
+    "~/Library/Logs/AgentBackup",
+  ]
+end
