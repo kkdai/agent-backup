@@ -16,7 +16,7 @@ public protocol AgentProvider {
 public enum Providers {
     public static func all(home: URL) -> [AgentProvider] {
         [ClaudeCodeProvider(home: home), CodexProvider(home: home), GeminiProvider(home: home), CopilotProvider(home: home),
-         ClaudeDesktopProvider(home: home), CursorProvider(home: home)]
+         ClaudeDesktopProvider(home: home), CursorProvider(home: home), ProjectFilesProvider(home: home)]
     }
 
     public static func provider(id: String, home: URL) -> AgentProvider? {
@@ -152,6 +152,8 @@ public enum RestoreNote: Hashable {
     case unsupportedAgent(id: String)
     /// Session files were restored, but the agent may not list them (its index isn't rebuilt).
     case sessionsMayNotBeListed(agent: String)
+    /// Project config files weren't restored because the project folder isn't on this Mac.
+    case projectMissing(path: String, files: Int)
 
     /// A command the user can copy, if the note has one.
     public var command: String? {
@@ -172,6 +174,7 @@ public enum RestoreNote: Hashable {
         case .logInAfterRestore(let agent, let command): "After restoring, run `\(command)` and log in to \(agent) — login state is never backed up."
         case .unsupportedAgent(let id): "This version of the app can't restore '\(id)'; skipped."
         case .sessionsMayNotBeListed(let agent): "\(agent) session files were restored, but it may not list them when resuming."
+        case .projectMissing(let path, let files): "\(path) isn't on this Mac; \(files) project config file(s) skipped. Clone or move it there and restore again."
         }
     }
 }

@@ -165,11 +165,13 @@ AgentBackup/                       ← 使用者看得到的資料夾（已決�
 | 5 | 技術 | **純 Swift**（Swift Package + CLI + SwiftUI） |
 | 6 | 跨 agent MCP 複製 | **要做**，放在 M3（有第二個 provider 後） |
 
-## 10. 還沒決定 ❓
+## 10. 後續決定（2026-10-10）
 
-- App 名稱（暫定 `agent-backup-macos`）
-- 發佈方式：Developer ID + DMG/Homebrew（建議）
-- 專案內的 `.mcp.json` / `CLAUDE.md` 要不要備份（通常已在 git）
+| # | 問題 | 決定 |
+|---|---|---|
+| #23 | App 名稱 | **Agent Backup**（bundle ID `com.kkdai.agent-backup`、Drive 資料夾 `AgentBackup`） |
+| #19 | 專案內的 `.mcp.json` / `CLAUDE.md` / `AGENTS.md` | **只備份沒有被 git 追蹤的**；另含 `CLAUDE.local.md`、`.claude/settings.local.json`、`GEMINI.md`。還原只寫入已存在的專案資料夾，且不覆蓋目標 repo 追蹤中的檔案 |
+| — | 發佈方式 | Developer ID + DMG / Homebrew（#21） |
 
 ## 11. M0 實作紀錄（2026-10-06）
 

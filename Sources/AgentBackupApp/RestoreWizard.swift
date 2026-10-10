@@ -587,6 +587,7 @@ private struct NoteRow: View {
         case .quitBeforeApplying: "xmark.octagon"
         case .unsupportedAgent: "questionmark.circle"
         case .sessionsMayNotBeListed: "exclamationmark.bubble"
+        case .projectMissing: "folder.badge.questionmark"
         }
     }
 
@@ -599,6 +600,7 @@ private struct NoteRow: View {
         case .logInAfterRestore(let agent, _): "開啟 \(agent) 並重新登入（登入資訊不會備份）"
         case .unsupportedAgent(let id): "這個版本還不能還原「\(id)」，已略過"
         case .sessionsMayNotBeListed(let agent): "\(agent) 的聊天記錄檔已還原，但它的「繼續對話」清單可能不會列出"
+        case .projectMissing(let path, let files): "\((path as NSString).abbreviatingWithTildeInPath) 不在這台 Mac 上，略過 \(files) 個專案設定檔；把專案放到該位置後再還原一次即可"
         }
     }
 }
