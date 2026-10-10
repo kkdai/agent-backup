@@ -83,7 +83,10 @@ func readPassphrase(_ prompt: String) throws -> String {
     if let env = ProcessInfo.processInfo.environment["AGENT_BACKUP_PASSPHRASE"], !env.isEmpty { return env }
     var buffer = [CChar](repeating: 0, count: 1024)
     guard readpassphrase(prompt, &buffer, buffer.count, RPP_REQUIRE_TTY) != nil else {
-        throw ValidationError("No terminal to ask for the passphrase; set AGENT_BACKUP_PASSPHRASE.")
+        throw CLIError("""
+            Can't ask for the passphrase here (no terminal). Run this command in Terminal, \
+            use Agent Backup.app, or set AGENT_BACKUP_PASSPHRASE.
+            """)
     }
     return String(cString: buffer)
 }
