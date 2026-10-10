@@ -34,5 +34,6 @@ if [[ ${#notarize[@]} -gt 0 ]]; then
   echo "Notarized and stapled"
 fi
 
-shasum -a 256 "$DMG" | tee "$DMG.sha256"
+# File name only, so `shasum -c` works wherever the DMG is downloaded.
+(cd "$(dirname "$DMG")" && shasum -a 256 "$(basename "$DMG")" | tee "$(basename "$DMG").sha256")
 echo "Built $DMG"
