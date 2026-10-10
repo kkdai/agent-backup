@@ -6,6 +6,7 @@
 
 - 設計文件：[docs/DESIGN.md](docs/DESIGN.md)
 - UI 設計：[docs/UI.md](docs/UI.md)
+- 發佈：[docs/RELEASE.md](docs/RELEASE.md)
 - Roadmap：[docs/ROADMAP.md](docs/ROADMAP.md)（[GitHub Milestones](https://github.com/kkdai/agent-backup/milestones)）
 - 備份位置：Google Drive、iCloud Drive 或本機資料夾
 - 支援備份：**Claude Code**、**Codex CLI**、**Gemini CLI**、**GitHub Copilot CLI**、**Claude Desktop**、**Cursor**（後兩者為 MCP 設定）
