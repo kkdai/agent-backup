@@ -11,7 +11,16 @@
 - 備份位置：Google Drive、iCloud Drive 或本機資料夾
 - 支援備份：**Claude Code**、**Codex CLI**、**Gemini CLI**、**GitHub Copilot CLI**、**Claude Desktop**、**Cursor**（後兩者為 MCP 設定）
 
-## App
+## 安裝
+
+從 [Releases](https://github.com/kkdai/agent-backup/releases/latest) 下載 `AgentBackup-<版本>.dmg`，把 **Agent Backup** 拖到「應用程式」。
+
+> 目前的版本還沒有經過 Apple notarization。第一次打開時請在 App 上按右鍵 › 打開，或執行：
+> `xattr -dr com.apple.quarantine "/Applications/Agent Backup.app"`
+
+App 裡附了 CLI：`"/Applications/Agent Backup.app/Contents/MacOS/agent-backup"`。
+
+## 從原始碼建置 App
 
 ```sh
 scripts/build-app.sh --open     # 打包並開啟 build/Agent Backup.app
